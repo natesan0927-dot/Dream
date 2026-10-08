@@ -13,6 +13,8 @@ Open `index.html` in any browser. No install or internet needed apart from web f
 - **Rate library**: every rate is editable. Replace the defaults with your local quotes.
 - Save / open project files, copy the estimate into Excel, download CSV, print to PDF.
 
+All dimensions are in feet, areas in sq ft, volumes in cu ft, and rates in ₹ per sq ft, cu ft or running ft. Slab and wall thicknesses are in inches. Only sheet gauges (mm), steel weights (kg) and concrete grades keep their usual units.
+
 Your inputs and rates are remembered in the browser.
 
 ## Notes

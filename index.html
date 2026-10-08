@@ -83,13 +83,13 @@ details.grp summary::after { content: "+"; color: var(--muted); font-family: var
 details.grp[open] summary::after { content: "−"; }
 details.grp summary::-webkit-details-marker { display: none; }
 .fields { display: grid; gap: 8px; padding: 0 14px 14px; }
-.f { display: grid; grid-template-columns: minmax(0, 1fr) 118px; gap: 8px; align-items: center; }
+.f { display: grid; grid-template-columns: minmax(0, 1fr) 132px; gap: 8px; align-items: center; }
 .f label { font-size: 13px; color: var(--ink); }
 .f label small { color: var(--muted); }
 .f .ctl { display: flex; align-items: center; gap: 4px; }
 .f input[type=number], .f select { width: 100%; min-width: 0; padding: 5px 6px; border: 1px solid var(--line-strong); border-radius: 4px; background: var(--bg); font-family: var(--font-mono); font-size: 13px; }
 .f select { font-family: var(--font-body); }
-.f .u { font: 11px var(--font-mono); color: var(--muted); min-width: 2.2em; }
+.f .u { font: 11px var(--font-mono); color: var(--muted); min-width: 3em; white-space: nowrap; }
 .f.wide { grid-template-columns: 1fr; }
 .f.chk { grid-template-columns: minmax(0, 1fr) auto; }
 .f input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--accent); }
@@ -204,7 +204,7 @@ td .tag { display: inline-block; font: 500 10px var(--font-mono); text-transform
         <div class="panehead">
           <div><h2>Site plan</h2><p>Factory shed with the office as a separate building outside it. Change dimensions on the left; the plan, estimate and checks update together.</p></div>
         </div>
-        <div class="drawing"><div id="planSvg"></div><div class="drawcap"><span id="planCap"></span><span>Road side at bottom · dimensions in metres</span></div></div>
+        <div class="drawing"><div id="planSvg"></div><div class="drawcap"><span id="planCap"></span><span>Road side at bottom · dimensions in feet</span></div></div>
         <div class="twocol">
           <div class="drawing"><div id="secSvg"></div><div class="drawcap"><span>Section A–A across the shed</span><span id="secCap"></span></div></div>
           <div class="drawing"><div id="offSvg"></div><div class="drawcap"><span>Office · front elevation</span><span id="offCap"></span></div></div>
@@ -217,7 +217,7 @@ td .tag { display: inline-block; font: 500 10px var(--font-mono); text-transform
           <div>
             <h3 style="margin-bottom:8px">Production zones in the shed</h3>
             <div class="tbl-wrap"><table id="zonesTbl"></table></div>
-            <p class="note">Laid out in process order so profiles move one way: store → cut → weld → assemble → glaze → dispatch. UPVC profiles come in 5.8–6 m lengths, so keep the cutting bay at least 8 m deep and the profile racks along the long wall.</p>
+            <p class="note">Laid out in process order so profiles move one way: store → cut → weld → assemble → glaze → dispatch. UPVC profiles come in 19–20 ft lengths, so keep the cutting bay at least 26 ft deep and the profile racks along the long wall.</p>
           </div>
         </div>
       </section>
@@ -244,7 +244,7 @@ td .tag { display: inline-block; font: 500 10px var(--font-mono); text-transform
 
       <section class="pane" id="pane-rates" role="tabpanel" aria-labelledby="tab-rates" hidden>
         <div class="panehead">
-          <div><h2>Rate library</h2><p>Indicative 2026 rates in Indian rupees, excluding GST, for supply and installation unless stated. Replace them with your local contractor quotes; every estimate line uses these numbers. Edited rates are outlined.</p></div>
+          <div><h2>Rate library</h2><p>Indicative 2026 rates in Indian rupees per sq ft, cu ft or running ft, excluding GST, for supply and installation unless stated. Replace them with your local contractor quotes; every estimate line uses these numbers. Edited rates are outlined.</p></div>
           <div class="actions noprint"><button class="btn" id="btnRatesReset">Restore default rates</button></div>
         </div>
         <div class="tbl-wrap"><table id="ratesTbl"></table></div>
@@ -252,25 +252,27 @@ td .tag { display: inline-block; font: 500 10px var(--font-mono); text-transform
     </main>
   </div>
 
-  <p class="foot">Quantities come from rule-of-thumb engineering ratios (steel kg/m² by span and height, footing sizes by tributary area, concrete per m² of built-up area). They are good for budgeting and comparing options, not for tendering. Get the structure designed by a licensed structural engineer, confirm setbacks and ground coverage with your local planning authority (DTCP / industrial estate rules), and take three quotes for the big items: PEB package, flooring and roofing.</p>
+  <p class="foot">Quantities come from rule-of-thumb engineering ratios (steel weight per sq ft by span and height, footing sizes by tributary area, concrete per sq ft of built-up area). They are good for budgeting and comparing options, not for tendering. Get the structure designed by a licensed structural engineer, confirm setbacks and ground coverage with your local planning authority (DTCP / industrial estate rules), and take three quotes for the big items: PEB package, flooring and roofing.</p>
 </div>
 <div class="toast" id="toast" hidden></div>
 
 <script>
 (function () {
 'use strict';
+const FT = 3.28084, SQFT = 10.7639, CUFT = 35.3147;   // per metre, per m², per m³
+const toM = (ft) => ft / FT, toM2 = (sf) => sf / SQFT;
 
 /* ---------- Defaults ---------- */
 const DEF = {
   project: 'UPVC Windows & Doors Factory',
-  land: { frontage: 120, depth: 150, setFront: 15, setRear: 6, setSide: 6 },
-  wh: { L: 80, W: 40, eave: 9, bay: 8, spans: 1, plinth: 0.6, floorT: 200, hardener: true, crane: 'none',
-        roof: 'peb_cc_gw', shape: 'gable', slope: 10, skylight: 5, turboPer: 80,
-        dado: 3, cladding: 'cc', winPct: 6, louverM2: 40, shutters: 4, shutW: 5, shutH: 5, pdoors: 4, ramps: 1,
+  land: { frontage: toM(400), depth: toM(500), setFront: toM(50), setRear: toM(20), setSide: toM(20) },
+  wh: { L: toM(260), W: toM(130), eave: toM(30), bay: toM(26), spans: 1, plinth: toM(2), floorT: 200, hardener: true, crane: 'none',
+        roof: 'peb_cc_gw', shape: 'gable', slope: 10, skylight: 5, turboPer: toM2(900),
+        dado: toM(10), cladding: 'cc', winPct: 6, louverM2: toM2(400), shutters: 4, shutW: toM(16), shutH: toM(16), pdoors: 4, ramps: 1,
         hvls: true, airPipe: true, workerToilets: 2, zones: true },
-  office: { place: 'front', gap: 9, L: 30, W: 15, floors: 2, floorH: 3.6, roof: 'rcc_canopy', winPct: 25,
+  office: { place: 'front', gap: toM(30), L: toM(100), W: toM(50), floors: 2, floorH: toM(12), roof: 'rcc_canopy', winPct: 25,
             toiletsPerFloor: 2, hvac: true, lift: false, facade: true },
-  ext: { roadW: 7.5, roadType: 'pqc', cars: 30, bikes: 150, gates: 2, compound: true, hydrant: true, greenPct: 10,
+  ext: { roadW: toM(24), roadType: 'pqc', cars: 30, bikes: 150, gates: 2, compound: true, hydrant: true, greenPct: 10,
          transformer: 315, dg: 125, solar: 100 },
   pct: { design: 2.5, contingency: 5, gst: 18 }
 };
@@ -291,7 +293,7 @@ const RATES = {
   floorConc:  ['Floor', 'M30 floor concrete (RMC)', 'm³', 7900],
   polythene:  ['Floor', '250 micron polythene sheet', 'm²', 28],
   vdf:        ['Floor', 'VDF finish with trimix & power trowel', 'm²', 180],
-  hardener:   ['Floor', 'Metallic floor hardener 5 kg/m²', 'm²', 240],
+  hardener:   ['Floor', 'Metallic floor hardener 0.5 kg/sq ft', 'm²', 240],
   jointCut:   ['Floor', 'Saw-cut joints with PU sealant', 'm', 140],
   pebPrimary: ['Steel', 'PEB primary steel (built-up), supply, fabrication, paint & erection', 'kg', 112],
   pebSecondary:['Steel', 'Cold-formed galvanised purlins, girts & bracing', 'kg', 102],
@@ -300,40 +302,40 @@ const RATES = {
   eot10:      ['Steel', 'EOT crane 10 T single girder with DSL', 'nos', 2900000],
   sheetBare:  ['Roof', 'Bare Galvalume AZ150, 0.47 mm TCT', 'm²', 520],
   sheetCC:    ['Roof', 'Colour-coated Galvalume AZ150, 0.50 mm TCT', 'm²', 610],
-  puf50:      ['Roof', 'PUF sandwich panel 50 mm, 0.5/0.4 mm skins', 'm²', 1750],
+  puf50:      ['Roof', 'PUF sandwich panel 2 in, 0.5/0.4 mm skins', 'm²', 1750],
   ssRoof:     ['Roof', 'Standing seam roof 0.55 mm AZ150 with clips', 'm²', 1080],
-  glasswool:  ['Roof', 'Glasswool 50 mm, 16 kg/m³, FSK foil + GI mesh', 'm²', 310],
+  glasswool:  ['Roof', 'Glasswool 2 in, 16 kg/m³ density, FSK foil + GI mesh', 'm²', 310],
   skylight:   ['Roof', 'Polycarbonate / FRP skylight sheet 2 mm', 'm²', 1150],
-  turbo:      ['Roof', 'Turbo ventilator 600 mm SS with base', 'nos', 4800],
+  turbo:      ['Roof', 'Turbo ventilator 24 in SS with base', 'nos', 4800],
   ridge:      ['Roof', 'Ridge cap & ridge flashing', 'm', 520],
   trim:       ['Roof', 'Gable & eave trims, closures', 'm', 380],
-  gutter:     ['Roof', 'Gutter 0.8 mm GI / SS, 600 mm girth', 'm', 1350],
-  downpipe:   ['Roof', 'PVC downpipe 150 mm with fittings', 'm', 520],
-  rccRoof:    ['Roof', 'RCC roof slab 150 mm with beams (all-in)', 'm²', 5600],
+  gutter:     ['Roof', 'Gutter 0.8 mm GI / SS, 2 ft girth', 'm', 1350],
+  downpipe:   ['Roof', 'PVC downpipe 6 in with fittings', 'm', 520],
+  rccRoof:    ['Roof', 'RCC roof slab 6 in with beams (all-in)', 'm²', 5600],
   rccCol:     ['Roof', 'RCC columns (all-in)', 'm³', 16500],
   waterproof: ['Roof', 'Waterproofing membrane (APP / PU)', 'm²', 650],
   weathering: ['Roof', 'Weathering course with pressed tiles', 'm²', 560],
   dadoWall:   ['Walls', 'Masonry dado wall, plastered & painted both sides', 'm²', 2150],
   cladCC:     ['Walls', 'Wall cladding, colour-coated 0.50 mm TCT', 'm²', 590],
-  cladPUF:    ['Walls', 'Wall cladding, PUF panel 50 mm', 'm²', 1650],
+  cladPUF:    ['Walls', 'Wall cladding, PUF panel 2 in', 'm²', 1650],
   upvcWin:    ['Walls', 'UPVC windows with toughened glass (in-house, at cost)', 'm²', 4200],
   louver:     ['Walls', 'Ventilation louvers', 'm²', 2600],
   rollShutter:['Walls', 'Motorised rolling shutter, GI 0.9 mm', 'm²', 4800],
-  pdoor:      ['Walls', 'Steel personnel door 1.0 × 2.1 m', 'nos', 32000],
+  pdoor:      ['Walls', 'Steel personnel door 3.3 × 7 ft', 'nos', 32000],
   ramp:       ['Walls', 'RCC loading ramp with dock bumpers', 'nos', 280000],
   highbay:    ['Shed services', 'LED high-bay 150 W fitting', 'nos', 8200],
   elecShed:   ['Shed services', 'LT distribution, cabling, DBs, power points & earthing', 'm²', 420],
-  airPipe:    ['Shed services', 'Aluminium compressed-air ring main 40 mm with drops', 'm', 1550],
-  hvls:       ['Shed services', 'HVLS fan 7.3 m diameter', 'nos', 285000],
+  airPipe:    ['Shed services', 'Aluminium compressed-air ring main 1.5 in with drops', 'm', 1550],
+  hvls:       ['Shed services', 'HVLS fan 24 ft diameter', 'nos', 285000],
   wToilet:    ['Shed services', 'Worker toilet, wash & changing block', 'nos', 650000],
   fireShed:   ['Shed services', 'Extinguishers, smoke detection & signage', 'm²', 55],
-  aacExt:     ['Office', '200 mm AAC block masonry', 'm²', 1150],
-  aacInt:     ['Office', '100 mm AAC partition walls', 'm²', 820],
-  plastInt:   ['Office', 'Internal plaster 12 mm', 'm²', 360],
-  plastExt:   ['Office', 'External plaster 20 mm, two coats', 'm²', 470],
+  aacExt:     ['Office', '8 in AAC block masonry', 'm²', 1150],
+  aacInt:     ['Office', '4 in AAC partition walls', 'm²', 820],
+  plastInt:   ['Office', 'Internal plaster 1/2 in', 'm²', 360],
+  plastExt:   ['Office', 'External plaster 3/4 in, two coats', 'm²', 470],
   paintInt:   ['Office', 'Putty + emulsion paint', 'm²', 210],
   paintExt:   ['Office', 'Exterior weatherproof paint', 'm²', 240],
-  vitrified:  ['Office', 'Vitrified tile flooring 800 × 800', 'm²', 1450],
+  vitrified:  ['Office', 'Vitrified tile flooring 2 × 2 ft', 'm²', 1450],
   ceiling:    ['Office', 'Gypsum false ceiling', 'm²', 1050],
   mainDoor:   ['Office', 'Toughened glass main entrance door', 'nos', 95000],
   flushDoor:  ['Office', 'Flush door with frame & hardware', 'nos', 19500],
@@ -347,19 +349,19 @@ const RATES = {
   fireOff:    ['Office', 'Fire alarm & extinguishers', 'm²', 220],
   canopy:     ['Office', 'Terrace canopy, light steel + colour-coated sheet', 'm²', 1950],
   facade:     ['Office', 'ACP cladding / structural glazing façade', 'm²', 4200],
-  compound:   ['External', 'Compound wall 2.4 m with foundation & barbed wire', 'm', 6900],
-  gate:       ['External', 'MS sliding gate 8 m with track', 'nos', 195000],
-  security:   ['External', 'Security cabin 3 × 3 m with toilet', 'nos', 450000],
-  pqc:        ['External', 'Concrete road 200 mm PQC on GSB', 'm²', 2450],
-  paver:      ['External', 'Interlocking paver 80 mm on sand & GSB', 'm²', 1250],
-  drain:      ['External', 'Storm water drain 450 mm with covers', 'm', 2900],
+  compound:   ['External', 'Compound wall 8 ft with foundation & barbed wire', 'm', 6900],
+  gate:       ['External', 'MS sliding gate 26 ft with track', 'nos', 195000],
+  security:   ['External', 'Security cabin 10 × 10 ft with toilet', 'nos', 450000],
+  pqc:        ['External', 'Concrete road 8 in PQC on GSB', 'm²', 2450],
+  paver:      ['External', 'Interlocking paver 3 in on sand & GSB', 'm²', 1250],
+  drain:      ['External', 'Storm water drain 18 in with covers', 'm', 2900],
   rwh:        ['External', 'Rainwater harvesting recharge pit', 'nos', 55000],
   sump:       ['External', 'Underground sump 50 KL with pump room', 'nos', 750000],
   stp:        ['External', 'STP 10 KLD / septic system', 'nos', 480000],
   extPlumb:   ['External', 'External water supply & sewer lines', 'nos', 320000],
   landscape:  ['External', 'Landscaping, lawn & trees', 'm²', 380],
-  streetLight:['External', 'Street light pole 9 m with LED', 'nos', 48000],
-  hydrantMain:['Fire & power', 'Fire hydrant ring main 150 mm MS C-class', 'm', 3300],
+  streetLight:['External', 'Street light pole 30 ft with LED', 'nos', 48000],
+  hydrantMain:['Fire & power', 'Fire hydrant ring main 6 in MS C-class', 'm', 3300],
   hydrantPt:  ['Fire & power', 'Hydrant valve, hose box & hoses', 'nos', 48000],
   firePump:   ['Fire & power', 'Fire pumps (main, jockey, diesel) with panel', 'nos', 1650000],
   trafo:      ['Fire & power', 'Transformer, HT panel, RMU & earthing', 'kVA', 7800],
@@ -374,7 +376,7 @@ const ROOFS = {
   peb_cc_gw: { name: 'PEB + colour-coated sheet + glasswool', short: 'CC sheet + glasswool', struct: 'peb', cover: 'sheetCC', insul: 'glasswool', sf: 1.00, sec: 5.0,
                life: '30–35 yrs', heat: 3, noise: 3, build: '10–12 wks',
                note: 'The usual choice for production sheds in South India. Underdeck insulation cuts heat and rain noise at a modest premium.' },
-  peb_puf:   { name: 'PEB + PUF sandwich panel 50 mm', short: 'PUF panel', struct: 'peb', cover: 'puf50', insul: null, sf: 1.04, sec: 5.2,
+  peb_puf:   { name: 'PEB + PUF sandwich panel 2 in', short: 'PUF panel', struct: 'peb', cover: 'puf50', insul: null, sf: 1.04, sec: 5.2,
                life: '30–35 yrs', heat: 5, noise: 4, build: '11–13 wks',
                note: 'Best thermal comfort. Worth it if you plan an air-conditioned glazing or QC room inside the shed, or very hot site conditions.' },
   peb_ss:    { name: 'PEB + standing seam + glasswool', short: 'Standing seam', struct: 'peb', cover: 'ssRoof', insul: 'glasswool', sf: 1.00, sec: 4.6,
@@ -382,10 +384,10 @@ const ROOFS = {
                note: 'Concealed clips, no screws through the sheet, so leaks are rare on long slopes. Rooftop solar clamps onto the seams without drilling.' },
   conv:      { name: 'Conventional MS truss + colour-coated sheet', short: 'Conventional truss', struct: 'conv', cover: 'sheetCC', insul: null, sf: 1.00, sec: 0,
                life: '20–25 yrs', heat: 2, noise: 2, build: '16–20 wks',
-               note: 'Locally fabricated. Heavier and slower to build, needs repainting every 5–7 years, harder to extend later. Sensible only for spans under about 25 m.' },
+               note: 'Locally fabricated. Heavier and slower to build, needs repainting every 5–7 years, harder to extend later. Sensible only for spans under about 80 ft.' },
   rcc:       { name: 'RCC frame + flat RCC slab', short: 'RCC slab', struct: 'rcc', cover: null, insul: null, sf: 1.00, sec: 0,
                life: '50+ yrs', heat: 4, noise: 5, build: '6–8 months',
-               note: 'Needs internal columns about every 8 m, which block profile racks and forklift lanes. Shown for comparison; rarely right for a fabrication shed.' }
+               note: 'Needs internal columns about every 26 ft, which block profile racks and forklift lanes. Shown for comparison; rarely right for a fabrication shed.' }
 };
 
 const ZONES = [
@@ -396,13 +398,13 @@ const ZONES = [
 
 const FIELDS = [
   { g: 'Land plot', open: true, items: [
-    ['land.frontage', 'Frontage (road side)', 'm'], ['land.depth', 'Depth', 'm'],
-    ['land.setFront', 'Front setback', 'm'], ['land.setRear', 'Rear setback', 'm'], ['land.setSide', 'Side setbacks, each', 'm'] ] },
+    ['land.frontage', 'Frontage (road side)', 'm', { step: 5 }], ['land.depth', 'Depth', 'm', { step: 5 }],
+    ['land.setFront', 'Front setback', 'm', { step: 5 }], ['land.setRear', 'Rear setback', 'm', { step: 5 }], ['land.setSide', 'Side setbacks, each', 'm', { step: 5 }] ] },
   { g: 'Factory shed', open: true, items: [
-    ['wh.L', 'Length', 'm'], ['wh.W', 'Width (total span)', 'm'], ['wh.eave', 'Eave height', 'm', { step: 0.5 }],
-    ['wh.bay', 'Bay spacing', 'm', { step: 0.5 }], ['wh.spans', 'Number of spans', 'nos', { min: 1, max: 4, step: 1 }],
-    ['wh.plinth', 'Plinth above ground', 'm', { step: 0.1 }],
-    ['wh.floorT', 'Floor slab', '', { sel: [[150, '150 mm, light racks'], [200, '200 mm, forklift'], [250, '250 mm, heavy']] }],
+    ['wh.L', 'Length', 'm', { step: 5 }], ['wh.W', 'Width (total span)', 'm', { step: 5 }], ['wh.eave', 'Eave height', 'm', { step: 1 }],
+    ['wh.bay', 'Bay spacing', 'm', { step: 1 }], ['wh.spans', 'Number of spans', 'nos', { min: 1, max: 4, step: 1 }],
+    ['wh.plinth', 'Plinth above ground', 'm', { step: 0.5 }],
+    ['wh.floorT', 'Floor slab', '', { sel: [[150, '6 in, light racks'], [200, '8 in, forklift'], [250, '10 in, heavy']] }],
     ['wh.hardener', 'Metallic floor hardener', '', { chk: 1 }],
     ['wh.crane', 'EOT crane', '', { sel: [['none', 'None'], ['5T', '5 T'], ['10T', '10 T']] }] ] },
   { g: 'Roof', open: true, items: [
@@ -410,25 +412,25 @@ const FIELDS = [
     ['wh.shape', 'Roof shape', '', { sel: [['gable', 'Gable / multi-gable'], ['mono', 'Mono-slope'], ['curved', 'Curved (arched)']] }],
     ['wh.slope', 'Roof slope', '%', { step: 1 }],
     ['wh.skylight', 'Skylights', '% roof', { step: 1 }],
-    ['wh.turboPer', 'One turbo vent per', 'm²', { step: 10 }] ] },
+    ['wh.turboPer', 'One turbo vent per', 'm²', { step: 50 }] ] },
   { g: 'Shed walls & openings', items: [
-    ['wh.dado', 'Masonry dado height', 'm', { step: 0.1 }],
-    ['wh.cladding', 'Wall cladding', '', { sel: [['cc', 'Colour-coated sheet'], ['puf', 'PUF panel 50 mm']] }],
-    ['wh.winPct', 'UPVC windows', '% wall', { step: 1 }], ['wh.louverM2', 'Ventilation louvers', 'm²'],
-    ['wh.shutters', 'Rolling shutters', 'nos', { step: 1 }], ['wh.shutW', 'Shutter width', 'm', { step: 0.5 }], ['wh.shutH', 'Shutter height', 'm', { step: 0.5 }],
+    ['wh.dado', 'Masonry dado height', 'm', { step: 1 }],
+    ['wh.cladding', 'Wall cladding', '', { sel: [['cc', 'Colour-coated sheet'], ['puf', 'PUF panel 2 in']] }],
+    ['wh.winPct', 'UPVC windows', '% wall', { step: 1 }], ['wh.louverM2', 'Ventilation louvers', 'm²', { step: 50 }],
+    ['wh.shutters', 'Rolling shutters', 'nos', { step: 1 }], ['wh.shutW', 'Shutter width', 'm', { step: 1 }], ['wh.shutH', 'Shutter height', 'm', { step: 1 }],
     ['wh.pdoors', 'Personnel doors', 'nos', { step: 1 }], ['wh.ramps', 'Loading ramps', 'nos', { step: 1 }] ] },
   { g: 'Shed services', items: [
     ['wh.hvls', 'HVLS ceiling fans', '', { chk: 1 }], ['wh.airPipe', 'Compressed-air ring main', '', { chk: 1 }],
     ['wh.workerToilets', 'Worker toilet blocks', 'nos', { step: 1 }], ['wh.zones', 'Show production zones', '', { chk: 1 }] ] },
   { g: 'Office building', open: true, items: [
     ['office.place', 'Position', '', { sel: [['front', 'In front of shed'], ['left', 'Left of shed'], ['right', 'Right of shed']] }],
-    ['office.gap', 'Gap to shed', 'm', { step: 0.5 }], ['office.L', 'Length', 'm'], ['office.W', 'Width', 'm'],
-    ['office.floors', 'Floors', 'nos', { min: 1, max: 5, step: 1 }], ['office.floorH', 'Floor-to-floor height', 'm', { step: 0.1 }],
+    ['office.gap', 'Gap to shed', 'm', { step: 1 }], ['office.L', 'Length', 'm', { step: 5 }], ['office.W', 'Width', 'm', { step: 5 }],
+    ['office.floors', 'Floors', 'nos', { min: 1, max: 5, step: 1 }], ['office.floorH', 'Floor-to-floor height', 'm', { step: 0.5 }],
     ['office.roof', 'Roof', '', { sel: [['rcc', 'RCC + waterproofing'], ['rcc_canopy', 'RCC + metal terrace canopy']] }],
     ['office.winPct', 'UPVC windows', '% wall', { step: 1 }], ['office.toiletsPerFloor', 'Toilets per floor', 'nos', { step: 1 }],
     ['office.hvac', 'Air-conditioning', '', { chk: 1 }], ['office.lift', 'Passenger lift', '', { chk: 1 }], ['office.facade', 'ACP / glass front façade', '', { chk: 1 }] ] },
   { g: 'External works', items: [
-    ['ext.roadW', 'Internal road width', 'm', { step: 0.5 }],
+    ['ext.roadW', 'Internal road width', 'm', { step: 1 }],
     ['ext.roadType', 'Road surface', '', { sel: [['pqc', 'Concrete (PQC)'], ['paver', 'Interlocking paver']] }],
     ['ext.cars', 'Car parking', 'nos', { step: 1 }], ['ext.bikes', 'Two-wheeler parking', 'nos', { step: 5 }],
     ['ext.gates', 'Gates', 'nos', { step: 1, min: 1, max: 4 }], ['ext.compound', 'Compound wall', '', { chk: 1 }],
@@ -442,8 +444,12 @@ const FIELDS = [
 /* ---------- Helpers ---------- */
 const $ = (s) => document.querySelector(s);
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
-const SQFT = 10.7639;
 const fmt = (n) => Math.round(n).toLocaleString('en-IN');
+const d1 = (m) => (+(m * FT).toFixed(1)).toLocaleString('en-IN');      // metres → feet text
+const sq = (m2) => fmt(m2 * SQFT);                                       // m² → sq ft text
+const inch = (mm) => +(mm / 25.4).toFixed(1);
+const disp = (v, cv) => +(v * cv).toFixed(cv === 1 ? 3 : 2);
+const fmtR = (n) => (n >= 1000 ? fmt(n) : n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 const fmtQ = (n) => (Math.abs(n) >= 100 ? fmt(n) : (Math.round(n * 100) / 100).toLocaleString('en-IN'));
 const inr = (n) => '₹' + fmt(n);
 const big = (n) => (Math.abs(n) >= 1e7 ? '₹' + (n / 1e7).toFixed(2) + ' Cr' : '₹' + (n / 1e5).toFixed(2) + ' L');
@@ -468,9 +474,11 @@ function merge(base, over) {
 let embedded = false;
 try { embedded = window.self !== window.top; } catch (e) { embedded = true; }
 
-let S = merge(DEF, store.get('upvc-planner-state'));
-const defaultRates = Object.fromEntries(Object.entries(RATES).map(([k, v]) => [k, v[3]]));
-let R = Object.assign({}, defaultRates, store.get('upvc-planner-rates') || {});
+let S = merge(DEF, store.get('upvc-planner-state-v2'));
+const UNITS = { 'm²': [SQFT, 'sq ft'], 'm³': [CUFT, 'cu ft'], 'm': [FT, 'ft'] };
+const uconv = (u) => UNITS[u] || [1, u];
+const defaultRates = Object.fromEntries(Object.entries(RATES).map(([k, v]) => [k, v[3] / uconv(v[2])[0]]));
+let R = Object.assign({}, defaultRates, store.get('upvc-planner-rates-v2') || {});
 
 /* ---------- Geometry ---------- */
 function geo(s) {
@@ -523,14 +531,16 @@ function estimate(s, R) {
   const secs = []; let cur;
   const sec = (id, t) => { cur = { id, t, items: [] }; secs.push(cur); };
   const add = (d, q, u, rate) => {
+    const [fac, lab] = uconv(u);
     const r = typeof rate === 'string' ? (R[rate] || 0) : rate;
-    if (q > 0.0001 && r > 0) cur.items.push({ d, q, u, r, a: q * r });
+    q *= fac;
+    if (q > 0.0001 && r > 0) cur.items.push({ d, q, u: lab, r, a: q * r });
   };
 
   /* A. Site */
   sec('A', 'Site preparation');
   add(`Site clearance & removal of vegetation (${(landA / 4046.86).toFixed(2)} acres)`, landA, 'm²', 'clear');
-  add('Grading & levelling of entire plot by machinery, avg 300 mm cut/fill', landA, 'm²', 'grade');
+  add('Grading & levelling of entire plot by machinery, avg 1 ft cut/fill', landA, 'm²', 'grade');
 
   /* B. Foundations */
   sec('B', 'Shed foundations & plinth beam');
@@ -547,12 +557,12 @@ function estimate(s, R) {
   const fM = foot(main, a, 0.5), fW = foot(wind, 1.2, 0.4);
   const pbRcc = P * 0.3 * 0.5;
   const exc = fM.exc + fW.exc + P * 0.6 * 0.8, pccV = fM.pcc + fW.pcc + P * 0.45 * 0.1;
-  add(`Excavation for ${main + wind} column footings & plinth beam, avg 2.0 m deep`, exc, 'm³', 'excav');
-  add('PCC M10 bed 100 mm under footings & beams', pccV, 'm³', 'pcc');
-  add(`RCC M25 isolated footings ${a.toFixed(2)} × ${a.toFixed(2)} × 0.5 m with pedestals, ${main} nos`, fM.rcc, 'm³', 'rcc');
-  if (wind) add(`RCC M25 footings for end-wall wind columns 1.2 × 1.2 m, ${wind} nos`, fW.rcc, 'm³', 'rcc');
-  add('RCC M25 plinth beam 300 × 500 mm all round', pbRcc, 'm³', 'rcc');
-  add('Reinforcement in footings (95 kg/m³), pedestals & plinth beam (120 kg/m³)', (fM.rcc + fW.rcc) * 95 + pbRcc * 120, 'kg', 'rebar');
+  add(`Excavation for ${main + wind} column footings & plinth beam, avg 6.5 ft deep`, exc, 'm³', 'excav');
+  add('PCC M10 bed 4 in under footings & beams', pccV, 'm³', 'pcc');
+  add(`RCC M25 isolated footings ${d1(a)} × ${d1(a)} × 1.6 ft with pedestals, ${main} nos`, fM.rcc, 'm³', 'rcc');
+  if (wind) add(`RCC M25 footings for end-wall wind columns 4 × 4 ft, ${wind} nos`, fW.rcc, 'm³', 'rcc');
+  add('RCC M25 plinth beam 12 × 20 in all round', pbRcc, 'm³', 'rcc');
+  add('Reinforcement in footings (2.7 kg/cu ft), pedestals & plinth beam (3.4 kg/cu ft)', (fM.rcc + fW.rcc) * 95 + pbRcc * 120, 'kg', 'rebar');
   add('Formwork to footings, pedestals & plinth beam', fM.sh + fW.sh + P * 2 * 0.5, 'm²', 'shutter');
   if (!isR) {
     add(`Anchor bolt sets, 4 nos per column (${main + wind} columns)`, main * 4 * 3.2 + wind * 4 * 1.6, 'kg', 'anchor');
@@ -561,14 +571,14 @@ function estimate(s, R) {
 
   /* C. Floor */
   sec('C', 'Shed industrial floor');
-  add(`Plinth filling with gravel / murrum, ${wh.plinth} m, compacted in 200 mm layers`, planA * wh.plinth, 'm³', 'fill');
-  add('Granular sub-base 150 mm, compacted to 98% MDD', planA * 0.15, 'm³', 'gsb');
+  add(`Plinth filling with gravel / murrum, ${d1(wh.plinth)} ft, compacted in 8 in layers`, planA * wh.plinth, 'm³', 'fill');
+  add('Granular sub-base 6 in, compacted to 98% MDD', planA * 0.15, 'm³', 'gsb');
   add('250 micron polythene separation layer', planA, 'm²', 'polythene');
-  add(`M30 floor concrete ${wh.floorT} mm, laid in alternate panels`, planA * wh.floorT / 1000, 'm³', 'floorConc');
-  add(`Floor reinforcement mesh (${wh.floorT >= 200 ? '8 mm @ 150' : '8 mm @ 200'} c/c, one layer)`, planA * (wh.floorT >= 200 ? 4.5 : 3.2), 'kg', 'rebar');
+  add(`M30 floor concrete ${inch(wh.floorT)} in, laid in alternate panels`, planA * wh.floorT / 1000, 'm³', 'floorConc');
+  add(`Floor reinforcement mesh (8 mm bars @ ${wh.floorT >= 200 ? '6' : '8'} in c/c, one layer)`, planA * (wh.floorT >= 200 ? 4.5 : 3.2), 'kg', 'rebar');
   add('VDF finish with trimix & power trowel', planA, 'm²', 'vdf');
-  if (wh.hardener) add('Metallic floor hardener 5 kg/m² (wear resistance for trolleys)', planA, 'm²', 'hardener');
-  add('Saw-cut contraction joints at 4.5 m grid with PU sealant', L * (W / 4.5) + W * (L / 4.5), 'm', 'jointCut');
+  if (wh.hardener) add('Metallic floor hardener 0.5 kg/sq ft (wear resistance for trolleys)', planA, 'm²', 'hardener');
+  add('Saw-cut contraction joints at 15 ft grid with PU sealant', L * (W / 4.5) + W * (L / 4.5), 'm', 'jointCut');
 
   /* D. Structure */
   const craneKg = wh.crane === 'none' ? 0 : 2 * L * (wh.crane === '5T' ? 60 : 85);
@@ -580,7 +590,7 @@ function estimate(s, R) {
     kgm2 = (10 + 0.32 * clear + 1.0 * Math.max(0, eave - 6)) * (1 + 0.03 * (bayA - 7.5)) * rf.sf;
     const prim = planA * kgm2;
     const secd = roofA * rf.sec + cladGrossForGirts * 3.2 + planA * 1.2;
-    add(`PEB primary frames: ${frames} nos at ${bayA.toFixed(2)} m bays, ${spans} × ${clear.toFixed(1)} m span, tapered built-up columns & rafters (≈${kgm2.toFixed(1)} kg/m²)`, prim, 'kg', 'pebPrimary');
+    add(`PEB primary frames: ${frames} nos at ${d1(bayA)} ft bays, ${spans} × ${d1(clear)} ft span, tapered built-up columns & rafters (≈${(kgm2 / SQFT).toFixed(2)} kg/sq ft)`, prim, 'kg', 'pebPrimary');
     if (wind) add(`End-wall wind columns, ${wind} nos`, wind * eave * 28, 'kg', 'pebPrimary');
     add('Cold-formed Z/C purlins, wall girts, sag rods, flange braces & X-bracing', secd, 'kg', 'pebSecondary');
     if (craneKg) add(`Crane runway girders, brackets & rails (${wh.crane})`, craneKg, 'kg', 'pebPrimary');
@@ -588,7 +598,7 @@ function estimate(s, R) {
   } else if (isConv) {
     const truss = planA * (8 + 0.30 * clear), cols = main * (eave + 0.5) * 44 + wind * eave * 25;
     const purl = roofA * 7, girts = cladGrossForGirts * 3.5 + planA * 1.5;
-    add(`MS tubular roof trusses, ${frames * spans} nos, ${clear.toFixed(1)} m span`, truss, 'kg', 'convSteel');
+    add(`MS tubular roof trusses, ${frames * spans} nos, ${d1(clear)} ft span`, truss, 'kg', 'convSteel');
     add(`Rolled-section columns (ISMB) with base plates, ${main + wind} nos`, cols, 'kg', 'convSteel');
     add('MS purlins (ISMC / tubular) & sag rods', purl, 'kg', 'convSteel');
     add('Side girts, wind bracing & tie members', girts, 'kg', 'convSteel');
@@ -596,7 +606,7 @@ function estimate(s, R) {
     steelKg = truss + cols + purl + girts + craneKg;
   } else {
     const colV = main * 0.45 * 0.45 * (eave + 0.5);
-    add(`RCC columns 450 × 450 mm, ${main} nos on ${bayA.toFixed(1)} × ${(W / (ny - 1)).toFixed(1)} m grid`, colV, 'm³', 'rccCol');
+    add(`RCC columns 18 × 18 in, ${main} nos on ${d1(bayA)} × ${d1(W / (ny - 1))} ft grid`, colV, 'm³', 'rccCol');
     if (craneKg) add(`Crane runway girders & rails (${wh.crane})`, craneKg, 'kg', 'pebPrimary');
     steelKg = craneKg;
   }
@@ -613,16 +623,16 @@ function estimate(s, R) {
     const gutLen = shape === 'mono' ? L : 2 * L + (spans - 1) * L;
     const dpN = Math.ceil(gutLen / 12);
     const trimLen = 2 * (W + 0.6) * slopeF + (shape === 'mono' ? L : 0) + 2 * L;
-    add(`${RATES[rf.cover][1]} — roof area incl. ${shape === 'flat' ? '' : 'slope & '}300 mm overhangs`, sheetA, 'm²', rf.cover);
+    add(`${RATES[rf.cover][1]} — roof area incl. ${shape === 'flat' ? '' : 'slope & '}1 ft overhangs`, sheetA, 'm²', rf.cover);
     if (rf.insul) add(RATES[rf.insul][1] + ', underdeck', sheetA, 'm²', rf.insul);
     add(`Skylights, ${wh.skylight}% of roof, matching sheet profile`, sky, 'm²', 'skylight');
-    add(`Turbo ventilators, one per ${wh.turboPer} m² of floor`, turbos, 'nos', 'turbo');
+    add(`Turbo ventilators, one per ${sq(wh.turboPer)} sq ft of floor`, turbos, 'nos', 'turbo');
     add(`Ridge cap & flashing, ${ridges} ridge line${ridges === 1 ? '' : 's'}`, ridges * L, 'm', 'ridge');
     add('Gable, eave & high-side trims, closures & sealant', trimLen, 'm', 'trim');
     add(`Gutters: eave${spans > 1 ? ' + ' + (spans - 1) + ' valley' : ''}`, gutLen, 'm', 'gutter');
-    add(`Downpipes, ${dpN} nos × ${(eave + 0.5).toFixed(1)} m`, dpN * (eave + 0.5), 'm', 'downpipe');
+    add(`Downpipes, ${dpN} nos × ${d1(eave + 0.5)} ft`, dpN * (eave + 0.5), 'm', 'downpipe');
   } else {
-    add('RCC roof slab 150 mm with beams, all-in', planA, 'm²', 'rccRoof');
+    add('RCC roof slab 6 in with beams, all-in', planA, 'm²', 'rccRoof');
     add('Waterproofing membrane incl. upturns', planA * 1.05, 'm²', 'waterproof');
     add('Weathering course with pressed tiles', planA, 'm²', 'weathering');
     const dpN = Math.ceil(P / 12);
@@ -644,12 +654,12 @@ function estimate(s, R) {
     dadoA = Math.max(0, P * dadoH - n * sw * Math.min(sh, dadoH) - wh.pdoors * Math.min(2.1, dadoH));
     cladA = Math.max(0, cladGross - winA - wh.louverM2);
   }
-  add(`${isR ? '230 mm masonry walls, full height' : 'Masonry dado wall ' + dadoH + ' m high'}, plastered & painted both sides`, dadoA, 'm²', 'dadoWall');
-  add(wh.cladding === 'puf' ? 'Wall cladding, PUF panel 50 mm, above dado' : 'Wall cladding, colour-coated 0.50 mm TCT, above dado', cladA, 'm²', wh.cladding === 'puf' ? 'cladPUF' : 'cladCC');
+  add(`${isR ? '9 in masonry walls, full height' : 'Masonry dado wall ' + d1(dadoH) + ' ft high'}, plastered & painted both sides`, dadoA, 'm²', 'dadoWall');
+  add(wh.cladding === 'puf' ? 'Wall cladding, PUF panel 2 in, above dado' : 'Wall cladding, colour-coated 0.50 mm TCT, above dado', cladA, 'm²', wh.cladding === 'puf' ? 'cladPUF' : 'cladCC');
   add(`UPVC windows with toughened glass, ${wh.winPct}% of wall (made in-house, at cost)`, winA, 'm²', 'upvcWin');
   add('Ventilation louvers on end walls', wh.louverM2, 'm²', 'louver');
-  add(`Motorised rolling shutters ${sw} × ${sh} m, ${n} nos`, shutA, 'm²', 'rollShutter');
-  add('Steel personnel doors 1.0 × 2.1 m with closers', wh.pdoors, 'nos', 'pdoor');
+  add(`Motorised rolling shutters ${d1(sw)} × ${d1(sh)} ft, ${n} nos`, shutA, 'm²', 'rollShutter');
+  add('Steel personnel doors 3.3 × 7 ft with closers', wh.pdoors, 'nos', 'pdoor');
   add('RCC loading ramp 1:10 with dock bumpers', wh.ramps, 'nos', 'ramp');
 
   /* G. Shed services */
@@ -657,14 +667,14 @@ function estimate(s, R) {
   const hb = Math.ceil(planA / 55);
   add('LED high-bay 150 W fittings, about 300 lux at work level', hb, 'nos', 'highbay');
   add('LT distribution, cable trays, DBs, machine power points & earthing', planA, 'm²', 'elecShed');
-  if (wh.airPipe) add('Aluminium compressed-air ring main 40 mm with drops for saws, welders & cleaners', P * 0.9 + L * spans, 'm', 'airPipe');
-  if (wh.hvls) add('HVLS ceiling fans 7.3 m, one per 1,000 m²', Math.ceil(planA / 1000), 'nos', 'hvls');
+  if (wh.airPipe) add('Aluminium compressed-air ring main 1.5 in with drops for saws, welders & cleaners', P * 0.9 + L * spans, 'm', 'airPipe');
+  if (wh.hvls) add('HVLS ceiling fans 24 ft, one per 10,000 sq ft', Math.ceil(planA / 1000), 'nos', 'hvls');
   add('Fire extinguishers, smoke detection & exit signage', planA, 'm²', 'fireShed');
   add('Worker toilet, wash & changing block', wh.workerToilets, 'nos', 'wToilet');
 
   /* H. Office */
   const fp = o.L * o.W, bua = fp * o.floors, Po = 2 * (o.L + o.W), H = o.floors * o.floorH;
-  sec('H', `Office building — ${o.floors} floor${o.floors > 1 ? 's' : ''}, ${fmt(bua)} m² (${fmt(bua * SQFT)} sq ft)`);
+  sec('H', `Office building — ${o.floors} floor${o.floors > 1 ? 's' : ''}, ${fmt(bua * SQFT)} sq ft`);
   const extGross = Po * H, oWin = extGross * o.winPct / 100;
   const facadeA = o.facade ? o.L * H * 0.35 : 0;
   const extNet = Math.max(0, extGross - oWin - 2.4 * 2.4 - facadeA);
@@ -672,12 +682,12 @@ function estimate(s, R) {
   const oConc = bua * 0.40 + fp * 0.15;
   add('Excavation for foundations', fp * 0.8, 'm³', 'excav');
   add('PCC M10 under footings & ground floor bed', fp * 0.13, 'm³', 'pcc');
-  add(`Plinth filling, ${wh.plinth} m`, fp * wh.plinth, 'm³', 'fill');
+  add(`Plinth filling, ${d1(wh.plinth)} ft`, fp * wh.plinth, 'm³', 'fill');
   add('RCC M25 framed structure: footings, columns, beams, slabs & staircase', oConc, 'm³', 'rcc');
-  add('Reinforcement steel (≈105 kg/m³)', oConc * 105, 'kg', 'rebar');
+  add('Reinforcement steel (≈3 kg/cu ft)', oConc * 105, 'kg', 'rebar');
   add('Formwork / shuttering', bua * 2.6, 'm²', 'shutter');
-  add('200 mm AAC external walls', extNet + facadeA, 'm²', 'aacExt');
-  add('100 mm AAC internal partitions', intPart, 'm²', 'aacInt');
+  add('8 in AAC external walls', extNet + facadeA, 'm²', 'aacExt');
+  add('4 in AAC internal partitions', intPart, 'm²', 'aacInt');
   add('Internal plaster', extNet + facadeA + intPart * 2, 'm²', 'plastInt');
   add('External plaster', extNet, 'm²', 'plastExt');
   add('Internal putty & emulsion paint', extNet + facadeA + intPart * 2 + bua * 0.25, 'm²', 'paintInt');
@@ -703,24 +713,24 @@ function estimate(s, R) {
   /* I. External */
   sec('I', 'External works & landscaping');
   if (ext.compound) add(`Compound wall around plot, less ${ext.gates} gate openings`, Math.max(0, landP - ext.gates * 8), 'm', 'compound');
-  add('MS sliding gates 8 m', ext.gates, 'nos', 'gate');
+  add('MS sliding gates 26 ft', ext.gates, 'nos', 'gate');
   add('Security cabin at truck gate', 1, 'nos', 'security');
-  add(`Internal ring road ${ext.roadW} m wide with apron & truck driveway`, g.roadA, 'm²', ext.roadType);
+  add(`Internal ring road ${d1(ext.roadW)} ft wide with apron & truck driveway`, g.roadA, 'm²', ext.roadType);
   add(`Parking: ${ext.cars} cars + ${ext.bikes} two-wheelers`, g.park.area, 'm²', 'paver');
   add('Storm water drains along boundary & around shed', landP * 0.9 + 2 * (L + W) + 8 * g.apron, 'm', 'drain');
-  add('Rainwater harvesting recharge pits, one per 1,000 m² of roof', Math.ceil((roofA + fp) / 1000), 'nos', 'rwh');
+  add('Rainwater harvesting recharge pits, one per 10,000 sq ft of roof', Math.ceil((roofA + fp) / 1000), 'nos', 'rwh');
   add('Underground sump 50 KL with pump room', 1, 'nos', 'sump');
   add('STP / septic system', 1, 'nos', 'stp');
   add('External water supply & sewer lines', 1, 'nos', 'extPlumb');
   add(`Landscaping, ${ext.greenPct}% of plot`, landA * ext.greenPct / 100, 'm²', 'landscape');
-  add('Street lights along roads at 30 m spacing', Math.ceil((g.ringCL + g.driveLen) / 30), 'nos', 'streetLight');
+  add('Street lights along roads at 100 ft spacing', Math.ceil((g.ringCL + g.driveLen) / 30), 'nos', 'streetLight');
 
   /* J. Fire & power */
   sec('J', 'Fire protection & power');
   if (ext.hydrant) {
     const mainLen = g.ringCL + 20;
-    add('Fire hydrant ring main 150 mm around shed', mainLen, 'm', 'hydrantMain');
-    add('Hydrant points with hose boxes, one per 45 m', Math.ceil(mainLen / 45), 'nos', 'hydrantPt');
+    add('Fire hydrant ring main 6 in around shed', mainLen, 'm', 'hydrantMain');
+    add('Hydrant points with hose boxes, one per 150 ft', Math.ceil(mainLen / 45), 'nos', 'hydrantPt');
     add('Fire pump set (main + jockey + diesel standby) & panel', 1, 'nos', 'firePump');
   }
   add(`Transformer ${ext.transformer} kVA with HT panel, RMU & earthing`, ext.transformer, 'kVA', 'trafo');
@@ -758,6 +768,7 @@ function buildInputs() {
       const id = 'in-' + path.replace('.', '-');
       const row = document.createElement('div');
       const v = getP(S, path);
+      const cv = unit === 'm' ? FT : unit === 'm²' ? SQFT : 1;
       if (opt.chk) {
         row.className = 'f chk';
         row.innerHTML = `<label for="${id}">${esc(label)}</label><input type="checkbox" id="${id}" ${v ? 'checked' : ''}>`;
@@ -766,15 +777,16 @@ function buildInputs() {
         row.innerHTML = `<label for="${id}">${esc(label)}</label><div class="ctl"><select id="${id}">${opt.sel.map(([k, t]) => `<option value="${k}" ${String(k) === String(v) ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></div>`;
       } else {
         row.className = 'f';
-        row.innerHTML = `<label for="${id}">${esc(label)}</label><div class="ctl"><input type="number" id="${id}" value="${v}" min="${opt.min ?? 0}" ${opt.max ? `max="${opt.max}"` : ''} step="${opt.step ?? 1}" inputmode="decimal"><span class="u">${esc(unit)}</span></div>`;
+        row.innerHTML = `<label for="${id}">${esc(label)}</label><div class="ctl"><input type="number" id="${id}" value="${disp(v, cv)}" min="${opt.min ?? 0}" ${opt.max ? `max="${opt.max}"` : ''} step="${opt.step ?? 1}" inputmode="decimal"><span class="u">${esc(uconv(unit)[1])}</span></div>`;
       }
       row.dataset.path = path;
+      if (!opt.chk && !opt.sel) row.dataset.cv = cv;
       const el = row.querySelector('input,select');
       el.addEventListener(opt.chk || opt.sel ? 'change' : 'input', () => {
         let nv;
         if (opt.chk) nv = el.checked;
         else if (opt.sel) nv = typeof getP(DEF, path) === 'number' ? Number(el.value) : el.value;
-        else { nv = parseFloat(el.value); if (!isFinite(nv)) return; if (opt.min != null) nv = Math.max(opt.min, nv); if (opt.max != null) nv = Math.min(opt.max, nv); }
+        else { let x = parseFloat(el.value); if (!isFinite(x)) return; if (opt.min != null) x = Math.max(opt.min, x); if (opt.max != null) x = Math.min(opt.max, x); nv = x / cv; }
         setP(S, path, nv); save(); render();
       });
       f.appendChild(row);
@@ -785,7 +797,7 @@ function buildInputs() {
 function syncInputs() {
   document.querySelectorAll('#inputs [data-path]').forEach((row) => {
     const el = row.querySelector('input,select'), v = getP(S, row.dataset.path);
-    if (el.type === 'checkbox') el.checked = !!v; else if (document.activeElement !== el) el.value = v;
+    if (el.type === 'checkbox') el.checked = !!v; else if (document.activeElement !== el) el.value = row.dataset.cv ? disp(v, +row.dataset.cv) : v;
   });
   const isR = ROOFS[S.wh.roof].struct === 'rcc';
   ['wh.shape', 'wh.slope', 'wh.skylight', 'wh.turboPer', 'wh.cladding', 'wh.dado'].forEach((p) => {
@@ -793,7 +805,7 @@ function syncInputs() {
     if (row) { row.classList.toggle('disabled', isR); row.querySelector('input,select').disabled = isR; }
   });
 }
-function save() { store.set('upvc-planner-state', S); }
+function save() { store.set('upvc-planner-state-v2', S); }
 
 /* ---------- Drawings ---------- */
 function svgPlan(E) {
@@ -821,7 +833,7 @@ function svgPlan(E) {
   out += r(pk.x, pk.y, pk.w, pk.h, `style="fill:var(--bg);stroke:var(--line-strong)" stroke-width="${fs * 0.06}"`);
   const stalls = Math.floor(pk.w / 2.5);
   for (let i = 1; i < stalls && i < 400; i++) out += `<line x1="${pk.x + i * 2.5}" y1="${pk.y}" x2="${pk.x + i * 2.5}" y2="${pk.y + Math.min(5, pk.h)}" style="stroke:var(--line-strong)" stroke-width="${fs * 0.04}"/>`;
-  out += t(pk.x + pk.w / 2, pk.y + pk.h / 2 + fs * 0.35, `PARKING ${fmt(pk.area)} m²`, 'text-anchor="middle" style="fill:var(--muted)"');
+  out += t(pk.x + pk.w / 2, pk.y + pk.h / 2 + fs * 0.35, `PARKING ${fmt(pk.area * SQFT)} sq ft`, 'text-anchor="middle" style="fill:var(--muted)"');
   // shed
   const Wr = g.W;
   out += r(Wr.x, Wr.y, wh.L, wh.W, `style="fill:var(--sheet);stroke:var(--ink)" stroke-width="${fs * 0.16}"`);
@@ -847,13 +859,13 @@ function svgPlan(E) {
     out += r(sx, sy, wh.shutW, fs * 0.6, 'style="fill:var(--accent)"');
   }
   const rearGap = g.ringR.y - g.y0;
-  if (rearGap > 20) out += t(land.frontage / 2, g.y0 + rearGap / 2, `FUTURE EXPANSION · ${Math.round(rearGap)} m deep`, 'text-anchor="middle" style="fill:var(--muted)" letter-spacing="1"');
-  out += t(Wr.x + fs * 0.5, Wr.y - fs * 0.6, `FACTORY SHED  ${wh.L} × ${wh.W} m  ·  ${fmt(m.planA)} m² / ${fmt(m.planA * SQFT)} sq ft`, 'font-weight="500"');
+  if (rearGap > 20) out += t(land.frontage / 2, g.y0 + rearGap / 2, `FUTURE EXPANSION · ${d1(rearGap)} ft deep`, 'text-anchor="middle" style="fill:var(--muted)" letter-spacing="1"');
+  out += t(Wr.x + fs * 0.5, Wr.y - fs * 0.6, `FACTORY SHED  ${d1(wh.L)} × ${d1(wh.W)} ft  ·  ${fmt(m.planA * SQFT)} sq ft`, 'font-weight="500"');
   // office
   const Or = g.O;
   out += r(Or.x, Or.y, o.L, o.W, `style="fill:var(--accent-soft);stroke:var(--accent)" stroke-width="${fs * 0.16}"`);
   out += t(Or.x + o.L / 2, Or.y + o.W / 2 - fs * 0.2, 'OFFICE', 'text-anchor="middle" font-weight="500"');
-  out += t(Or.x + o.L / 2, Or.y + o.W / 2 + fs * 1.0, `${o.L} × ${o.W} m · G+${o.floors - 1}`, 'text-anchor="middle" style="fill:var(--muted)"');
+  out += t(Or.x + o.L / 2, Or.y + o.W / 2 + fs * 1.0, `${d1(o.L)} × ${d1(o.W)} ft · G+${o.floors - 1}`, 'text-anchor="middle" style="fill:var(--muted)"');
   // gates + security
   const gw = 8;
   out += r(g.drive.x + g.drive.w / 2 - gw / 2, D - fs * 0.35, gw, fs * 0.7, 'style="fill:var(--sky)"');
@@ -866,15 +878,15 @@ function svgPlan(E) {
     out += t(sgx, D + fs * 1.6, 'STAFF GATE', 'text-anchor="middle" font-size="' + fs * 0.8 + '"');
   }
   // dimensions
-  out += t(F / 2, -mg * 0.35, `${F} m frontage`, 'text-anchor="middle" style="fill:var(--muted)"');
-  out += `<text x="${-mg * 0.35}" y="${D / 2}" font-size="${fs}" text-anchor="middle" transform="rotate(-90 ${-mg * 0.35} ${D / 2})" style="fill:var(--muted)">${D} m depth</text>`;
+  out += t(F / 2, -mg * 0.35, `${d1(F)} ft frontage`, 'text-anchor="middle" style="fill:var(--muted)"');
+  out += `<text x="${-mg * 0.35}" y="${D / 2}" font-size="${fs}" text-anchor="middle" transform="rotate(-90 ${-mg * 0.35} ${D / 2})" style="fill:var(--muted)">${d1(D)} ft depth</text>`;
   // north arrow + scale bar
   const nx = F + mg * 0.5, ny0 = mg * 0.2;
   out += `<path d="M${nx} ${ny0} l${fs * 0.6} ${fs * 1.8} l${-fs * 0.6} ${-fs * 0.5} l${-fs * 0.6} ${fs * 0.5} z" style="fill:var(--ink)"/>`;
   out += t(nx, ny0 - fs * 0.3, 'N', 'text-anchor="middle" font-weight="500"');
-  const sb = Math.pow(10, Math.floor(Math.log10(F / 4))) * (F / 4 >= 5 * Math.pow(10, Math.floor(Math.log10(F / 4))) ? 5 : 1);
+  const sbF0 = F * FT / 4, pw = Math.pow(10, Math.floor(Math.log10(sbF0))), sbFt = pw * (sbF0 >= 5 * pw ? 5 : 1), sb = sbFt / FT;
   out += r(0, D + mg * 0.4 + roadBand + fs * 0.6, sb, fs * 0.35, 'style="fill:var(--ink)"');
-  out += t(sb + fs * 0.5, D + mg * 0.4 + roadBand + fs * 1.0, `${sb} m`);
+  out += t(sb + fs * 0.5, D + mg * 0.4 + roadBand + fs * 1.0, `${sbFt} ft`);
   out += '</svg>';
   return out;
 }
@@ -883,7 +895,7 @@ function svgSection(E) {
   const m = E.m, wh = S.wh, W = wh.W, eave = m.eave, isR = m.shape === 'flat';
   const H = m.ridgeH, fs = Math.max(W, H * 2) / 40, mg = fs * 5;
   const below = wh.plinth + 2.2;
-  const vb = `${-mg} ${-(H + mg * 0.8)} ${W + mg * 2.6} ${H + below + mg * 1.8}`;
+  const vb = `${-mg} ${-(H + mg * 0.8)} ${W + mg * 3.2} ${H + below + mg * 1.8}`;
   let out = `<svg viewBox="${vb}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Shed cross-section">`;
   out += `<defs><pattern id="brick" width="${fs * 0.8}" height="${fs * 0.8}" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="${fs * 0.8}" style="stroke:var(--muted)" stroke-width="${fs * 0.08}"/></pattern></defs>`;
   // ground & floor
@@ -951,11 +963,11 @@ function svgSection(E) {
   const t = (x, y, s, a = '') => `<text x="${x}" y="${y}" font-size="${fs}" ${a}>${esc(s)}</text>`;
   const dy = wh.plinth + below - fs * 0.6;
   out += `<line x1="0" y1="${dy - fs * 1.2}" x2="${W}" y2="${dy - fs * 1.2}" style="stroke:var(--muted)" stroke-width="${fs * 0.06}"/>`;
-  out += t(W / 2, dy - fs * 1.5, `${W} m${m.spans > 1 ? ` (${m.spans} × ${m.clear.toFixed(1)} m)` : ' clear span'}`, 'text-anchor="middle"');
+  out += t(W / 2, dy - fs * 1.5, `${d1(W)} ft${m.spans > 1 ? ` (${m.spans} × ${d1(m.clear)} ft)` : ' clear span'}`, 'text-anchor="middle"');
   out += `<line x1="${-mg * 0.45}" y1="0" x2="${-mg * 0.45}" y2="${-eave}" style="stroke:var(--muted)" stroke-width="${fs * 0.06}"/>`;
-  out += `<text x="${-mg * 0.6}" y="${-eave / 2}" font-size="${fs}" text-anchor="middle" transform="rotate(-90 ${-mg * 0.6} ${-eave / 2})">eave ${eave} m</text>`;
-  out += t(W + mg * 0.15, -H - fs * 0.2, `ridge ${H.toFixed(2)} m`, 'style="fill:var(--muted)"');
-  out += t(W + mg * 0.15, wh.plinth + 1.8, `footing ${m.a.toFixed(1)} m`, 'style="fill:var(--muted)"');
+  out += `<text x="${-mg * 0.6}" y="${-eave / 2}" font-size="${fs}" text-anchor="middle" transform="rotate(-90 ${-mg * 0.6} ${-eave / 2})">eave ${d1(eave)} ft</text>`;
+  out += t(W + mg * 0.15, -H - fs * 0.2, `ridge ${d1(H)} ft`, 'style="fill:var(--muted)"');
+  out += t(W + mg * 0.15, wh.plinth + 1.8, `footing ${d1(m.a)} ft`, 'style="fill:var(--muted)"');
   out += '</svg>';
   return out;
 }
@@ -982,7 +994,7 @@ function svgOffice(E) {
     out += `<polyline points="${-0.3},${-H - 3} ${L / 2},${-H - 4} ${L + 0.3},${-H - 3}" fill="none" style="stroke:var(--accent)" stroke-width="${fs * 0.15}"/>`;
     for (const x of [0.3, L / 2, L - 0.3]) out += `<line x1="${x}" y1="${-H - 1}" x2="${x}" y2="${-H - 3 - (x === L / 2 ? 1 : 0)}" style="stroke:var(--ink)" stroke-width="${fs * 0.08}"/>`;
   }
-  out += `<text x="${L / 2}" y="${fs * 1.4}" font-size="${fs}" text-anchor="middle">${L} m · ${o.floors} floor${o.floors > 1 ? 's' : ''} × ${o.floorH} m</text>`;
+  out += `<text x="${L / 2}" y="${fs * 1.4}" font-size="${fs}" text-anchor="middle">${d1(L)} ft · ${o.floors} floor${o.floors > 1 ? 's' : ''} × ${d1(o.floorH)} ft</text>`;
   out += '</svg>';
   return out;
 }
@@ -993,17 +1005,17 @@ function checks(E) {
   const inside = (rc, x0, y0, x1, y1) => rc.x >= x0 - 1e-6 && rc.y >= y0 - 1e-6 && rc.x + rc.w <= x1 + 1e-6 && rc.y + rc.h <= y1 + 1e-6;
   const Wr = { x: g.W.x, y: g.W.y, w: wh.L, h: wh.W }, Or = { x: g.O.x, y: g.O.y, w: o.L, h: o.W };
   if (!inside(Wr, g.x0, g.y0, g.x1, g.y1) || !inside(Or, g.x0, g.y0, g.x1, g.y1))
-    list.push(['bad', `Buildings cross the setback line. Buildable area is ${(g.x1 - g.x0).toFixed(1)} × ${(g.y1 - g.y0).toFixed(1)} m; reduce the shed or office size, the gap, or move the office.`]);
-  else list.push(['', `Shed and office fit inside the setbacks (buildable area ${(g.x1 - g.x0).toFixed(1)} × ${(g.y1 - g.y0).toFixed(1)} m).`]);
+    list.push(['bad', `Buildings cross the setback line. Buildable area is ${d1(g.x1 - g.x0)} × ${d1(g.y1 - g.y0)} ft; reduce the shed or office size, the gap, or move the office.`]);
+  else list.push(['', `Shed and office fit inside the setbacks (buildable area ${d1(g.x1 - g.x0)} × ${d1(g.y1 - g.y0)} ft).`]);
   if (!inside(g.ringR, 0, 0, land.frontage, land.depth)) list.push(['bad', 'The ring road around the shed runs outside the plot. Trucks need a clear loop; shrink the shed or the road width.']);
-  if (o.gap < g.ring) list.push(['warn', `Gap between office and shed (${o.gap} m) is less than apron + road (${g.ring.toFixed(1)} m), so the ring road cannot pass between them.`]);
+  if (o.gap < g.ring) list.push(['warn', `Gap between office and shed (${d1(o.gap)} ft) is less than apron + road (${d1(g.ring)} ft), so the ring road cannot pass between them.`]);
   const cov = m.coverage;
   list.push([cov > 60 ? 'warn' : '', `Ground coverage ${cov.toFixed(1)}% of the plot. Typical industrial limits are 50–60%; check your DTCP / SIPCOT rules.`]);
-  if (m.shape !== 'flat' && m.clear > 60) list.push(['warn', `Clear span of ${m.clear.toFixed(0)} m is very large; two spans with a central column line usually save 15–25% steel.`]);
-  if (m.shape === 'flat') list.push(['warn', `RCC roof needs about ${m.columns} columns on an 8 m grid, which interrupts racks and forklift lanes.`]);
-  if (E.rf.struct === 'conv' && m.clear > 25) list.push(['warn', `Conventional trusses over ${m.clear.toFixed(0)} m get heavy; PEB is normally cheaper and faster above 25 m.`]);
+  if (m.shape !== 'flat' && m.clear > 60) list.push(['warn', `Clear span of ${d1(m.clear)} ft is very large; two spans with a central column line usually save 15–25% steel.`]);
+  if (m.shape === 'flat') list.push(['warn', `RCC roof needs about ${m.columns} columns on a 26 ft grid, which interrupts racks and forklift lanes.`]);
+  if (E.rf.struct === 'conv' && m.clear > 25) list.push(['warn', `Conventional trusses over ${d1(m.clear)} ft get heavy; PEB is normally cheaper and faster above 25 m.`]);
   if (m.shape !== 'flat' && (wh.slope < 5 || wh.slope > 20)) list.push(['warn', `Roof slope ${wh.slope}% is outside the usual 5–20% (1:20 to 1:5) range for metal roofs.`]);
-  if (wh.eave < 7) list.push(['warn', 'Eave below 7 m leaves little room for profile racks, overhead air lines and HVLS fans.']);
+  if (wh.eave < 7) list.push(['warn', 'Eave below 23 ft leaves little room for profile racks, overhead air lines and HVLS fans.']);
   if (ext.solar > m.solarCap) list.push(['warn', `${ext.solar} kWp solar needs more roof than available; about ${Math.floor(m.solarCap)} kWp fits.`]);
   else if (ext.solar > 0) list.push(['', `${ext.solar} kWp solar fits on the roof (capacity about ${Math.floor(m.solarCap)} kWp).`]);
   if (g.park.x + g.park.w > (S.office.place === 'right' ? land.frontage - land.setSide : g.drive.x)) list.push(['warn', 'Parking does not fit in the front setback strip; plan part of it along a side road.']);
@@ -1028,14 +1040,14 @@ function render() {
   ].map(([c, v, s]) => `<div class="kpi ${c}"><span class="v">${v}</span><span class="s">${s}</span></div>`).join('');
 
   $('#planSvg').innerHTML = svgPlan(E);
-  $('#planCap').textContent = `Plot ${S.land.frontage} × ${S.land.depth} m = ${fmt(m.landA)} m² (${(m.landA / 4046.86).toFixed(2)} acres)`;
+  $('#planCap').textContent = `Plot ${d1(S.land.frontage)} × ${d1(S.land.depth)} ft = ${sq(m.landA)} sq ft (${(m.landA / 4046.86).toFixed(2)} acres)`;
   $('#secSvg').innerHTML = svgSection(E);
   $('#secCap').textContent = E.rf.short + (m.shape === 'flat' ? '' : ` · ${m.shape} · ${S.wh.slope}% slope`);
   $('#offSvg').innerHTML = svgOffice(E);
-  $('#offCap').textContent = `${fmt(m.bua)} m² built-up`;
+  $('#offCap').textContent = `${sq(m.bua)} sq ft built-up`;
   $('#checks').innerHTML = checks(E).map(([c, t]) => `<li class="${c}">${esc(t)}</li>`).join('');
-  $('#zonesTbl').innerHTML = `<thead><tr><th>Zone</th><th class="r">Share</th><th class="r">Length</th><th class="r">Area m²</th></tr></thead><tbody>` +
-    ZONES.map(([n, p, h], i) => `<tr><td><span class="zone-sw" style="background:hsl(${h} 70% 55% / .45)"></span>${i + 1}. ${esc(n)}</td><td class="r num">${p}%</td><td class="r num">${(S.wh.L * p / 100).toFixed(1)} m</td><td class="r num">${fmt(m.planA * p / 100)}</td></tr>`).join('') + '</tbody>';
+  $('#zonesTbl').innerHTML = `<thead><tr><th>Zone</th><th class="r">Share</th><th class="r">Length</th><th class="r">Area sq ft</th></tr></thead><tbody>` +
+    ZONES.map(([n, p, h], i) => `<tr><td><span class="zone-sw" style="background:hsl(${h} 70% 55% / .45)"></span>${i + 1}. ${esc(n)}</td><td class="r num">${p}%</td><td class="r num">${d1(S.wh.L * p / 100)} ft</td><td class="r num">${fmt(m.planA * p / 100 * SQFT)}</td></tr>`).join('') + '</tbody>';
 
   renderRoof(E); renderBoq(E); renderRates();
 }
@@ -1066,7 +1078,7 @@ function renderRoof(E) {
     return `<article class="rcard ${k === S.wh.roof ? 'on' : ''}"><div class="eyebrow">${esc(rf.short)}</div><h3>${esc(rf.name)}</h3>
       <div class="price">${inr(roofSec.sum)} <span class="note">roof covering</span></div>
       <p>${esc(rf.note)}</p>
-      <dl><dt>Roof area</dt><dd class="num">${fmt(e.m.roofA)} m²</dd><dt>Frame</dt><dd class="num">${rf.struct === 'rcc' ? e.m.columns + ' RCC columns' : (e.m.steelKg / e.m.planA).toFixed(1) + ' kg/m² steel'}</dd>
+      <dl><dt>Roof area</dt><dd class="num">${sq(e.m.roofA)} sq ft</dd><dt>Frame</dt><dd class="num">${rf.struct === 'rcc' ? e.m.columns + ' RCC columns' : (e.m.steelKg / e.m.planA / SQFT).toFixed(2) + ' kg/sq ft steel'}</dd>
       <dt>Build time</dt><dd>${rf.build}</dd></dl></article>`;
   }).join('');
   document.querySelectorAll('[data-roof]').forEach((b) => b.addEventListener('click', () => {
@@ -1087,7 +1099,7 @@ function renderBoq(E) {
   for (const s of E.secs) {
     html += `<tr class="sechead"><td>${s.id}</td><td colspan="5">${esc(s.t)}</td></tr>`;
     s.items.forEach((it, i) => {
-      html += `<tr><td class="num">${s.id}.${i + 1}</td><td>${esc(it.d)}</td><td class="r num">${fmtQ(it.q)}</td><td>${it.u}</td><td class="r num">${fmt(it.r)}</td><td class="r num">${fmt(it.a)}</td></tr>`;
+      html += `<tr><td class="num">${s.id}.${i + 1}</td><td>${esc(it.d)}</td><td class="r num">${fmtQ(it.q)}</td><td>${it.u}</td><td class="r num">${fmtR(it.r)}</td><td class="r num">${fmt(it.a)}</td></tr>`;
     });
     html += `<tr class="secsum"><td></td><td colspan="4">Total ${s.id} — ${esc(s.t)}</td><td class="r num">${fmt(s.sum)}</td></tr>`;
   }
@@ -1099,22 +1111,22 @@ function renderRates() {
   const tbl = $('#ratesTbl');
   if (tbl.dataset.built) {
     tbl.querySelectorAll('input[data-rate]').forEach((el) => {
-      if (document.activeElement !== el) el.value = R[el.dataset.rate];
-      el.classList.toggle('changed', R[el.dataset.rate] !== defaultRates[el.dataset.rate]);
+      if (document.activeElement !== el) el.value = +R[el.dataset.rate].toFixed(2);
+      el.classList.toggle('changed', Math.abs(R[el.dataset.rate] - defaultRates[el.dataset.rate]) > 1e-9);
     });
     return;
   }
   let html = '<thead><tr><th>Group</th><th>Item</th><th>Unit</th><th class="r">Rate ₹</th></tr></thead><tbody>';
   let lastG = '';
   for (const [k, [grp, d, u]] of Object.entries(RATES)) {
-    html += `<tr><td class="note">${grp !== lastG ? esc(grp) : ''}</td><td><label for="rate-${k}">${esc(d)}</label></td><td>${u}</td><td class="r"><input class="rate-in ${R[k] !== defaultRates[k] ? 'changed' : ''}" type="number" min="0" step="any" id="rate-${k}" data-rate="${k}" value="${R[k]}"></td></tr>`;
+    html += `<tr><td class="note">${grp !== lastG ? esc(grp) : ''}</td><td><label for="rate-${k}">${esc(d)}</label></td><td>${uconv(u)[1]}</td><td class="r"><input class="rate-in ${Math.abs(R[k] - defaultRates[k]) > 1e-9 ? 'changed' : ''}" type="number" min="0" step="any" id="rate-${k}" data-rate="${k}" value="${+R[k].toFixed(2)}"></td></tr>`;
     lastG = grp;
   }
   tbl.innerHTML = html + '</tbody>';
   tbl.dataset.built = '1';
   tbl.querySelectorAll('input[data-rate]').forEach((el) => el.addEventListener('input', () => {
     const v = parseFloat(el.value); if (!isFinite(v) || v < 0) return;
-    R[el.dataset.rate] = v; store.set('upvc-planner-rates', R); render();
+    R[el.dataset.rate] = v; store.set('upvc-planner-rates-v2', R); render();
   }));
 }
 
@@ -1123,7 +1135,7 @@ let toastT;
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => (t.hidden = true), 2200); }
 function boqRows(E) {
   const rows = [['No.', 'Section', 'Description', 'Qty', 'Unit', 'Rate (INR)', 'Amount (INR)']];
-  for (const s of E.secs) s.items.forEach((it, i) => rows.push([`${s.id}.${i + 1}`, s.t, it.d, (Math.round(it.q * 100) / 100), it.u, Math.round(it.r), Math.round(it.a)]));
+  for (const s of E.secs) s.items.forEach((it, i) => rows.push([`${s.id}.${i + 1}`, s.t, it.d, (Math.round(it.q * 100) / 100), it.u, Math.round(it.r * 100) / 100, Math.round(it.a)]));
   rows.push([], ['', '', 'Sub-total, works', '', '', '', Math.round(E.sub)],
     ['', '', `Design & approvals (${S.pct.design}%)`, '', '', '', Math.round(E.design)],
     ['', '', `Contingency (${S.pct.contingency}%)`, '', '', '', Math.round(E.cont)],
@@ -1155,7 +1167,7 @@ $('#fileLoad').addEventListener('change', (ev) => {
   const f = ev.target.files[0]; if (!f) return;
   const rd = new FileReader();
   rd.onload = () => {
-    try { const j = JSON.parse(rd.result); S = merge(DEF, j.state || j); R = Object.assign({}, defaultRates, j.rates || {}); save(); store.set('upvc-planner-rates', R); render(); toast('Project opened'); }
+    try { const j = JSON.parse(rd.result); S = merge(DEF, j.state || j); R = Object.assign({}, defaultRates, j.rates || {}); save(); store.set('upvc-planner-rates-v2', R); render(); toast('Project opened'); }
     catch (e) { toast('That file is not a planner project (.json).'); }
   };
   rd.readAsText(f); ev.target.value = '';
@@ -1168,7 +1180,7 @@ $('#btnReset').addEventListener('click', (ev) => {
   clearTimeout(resetT); resetArmed = false; b.textContent = 'Reset to example';
   S = clone(DEF); save(); render(); toast('Example project restored. Your rates are kept.');
 });
-$('#btnRatesReset').addEventListener('click', () => { R = Object.assign({}, defaultRates); store.set('upvc-planner-rates', R); render(); toast('Default rates restored'); });
+$('#btnRatesReset').addEventListener('click', () => { R = Object.assign({}, defaultRates); store.set('upvc-planner-rates-v2', R); render(); toast('Default rates restored'); });
 $('#projName').addEventListener('input', (e) => { S.project = e.target.value; save(); });
 
 if (embedded) document.querySelectorAll('[data-local]').forEach((el) => (el.hidden = true));
