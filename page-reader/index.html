@@ -600,6 +600,21 @@ header p { margin: 0; color: var(--muted); max-width: 62ch; }
     else if (/loading language|loading tesseract|initializ/i.test(m.status || "")) setStatus("Preparing text recognition", "First time only: downloading the language data · " + pct + "%");
   }
   const withTimeout = (p, ms, msg) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(msg)), ms))]);
+  // The same browser database Tesseract uses for its cache (idb-keyval: "keyval-store" / "keyval").
+  function idb(op, key, val) {
+    return new Promise((resolve, reject) => {
+      const rq = indexedDB.open("keyval-store");
+      rq.onupgradeneeded = () => rq.result.createObjectStore("keyval");
+      rq.onerror = () => reject(rq.error);
+      rq.onsuccess = () => {
+        const db = rq.result;
+        const tx = db.transaction("keyval", op === "get" ? "readonly" : "readwrite");
+        const req = op === "get" ? tx.objectStore("keyval").get(key) : tx.objectStore("keyval").put(val, key);
+        tx.oncomplete = () => { db.close(); resolve(req.result); };
+        tx.onerror = () => { db.close(); reject(tx.error); };
+      };
+    });
+  }
   async function getOcrWorker(langs) {
     const key = langs.join("+");
     if (ocrWorker && ocrKey === key) return ocrWorker;
@@ -609,18 +624,58 @@ header p { margin: 0; color: var(--muted); max-width: 62ch; }
       corePath: "https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.1",
       logger: ocrLogger
     };
-    const make = (extra) => withTimeout(Tesseract.createWorker(langs, 1, Object.assign({}, opts, extra)), 120000,
+    const make = (langArg) => withTimeout(Tesseract.createWorker(langArg, 1, opts), 120000,
       "Text recognition took too long to start. Check your internet connection.");
     let w = null, firstErr = null;
     if (langs.every((l) => OCR_LOCAL.has(l)) && location.protocol !== "file:") {
-      try { w = await make({ langPath: new URL("tessdata", location.href).href }); } catch (e) { firstErr = e; }
+      // Language data shipped beside this page (tessdata/<code>.traineddata.txt, base64).
+      // Tesseract looks in its own browser cache before downloading, so put the data there first.
+      try {
+        for (const code of langs) {
+          const key = "./" + code + ".traineddata";
+          if (await idb("get", key)) continue;
+          if (state.waitingPage && !state.playing) setStatus("Preparing text recognition", "First time only: loading the " + TESS_NAME(code) + " language data");
+          const r = await fetch(new URL("tessdata/" + code + ".traineddata.txt", location.href));
+          if (!r.ok) throw new Error("Language data for " + TESS_NAME(code) + " is missing (" + r.status + ").");
+          const bin = atob((await r.text()).trim());
+          const bytes = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+          await idb("set", key, bytes);
+        }
+        w = await make(langs);
+      } catch (e) { console.warn(e); firstErr = e; }
     }
     if (!w) {
-      try { w = await make({}); } catch (e) { throw firstErr || e; }
+      try { w = await make(langs); } catch (e) { throw firstErr || e; }
     }
     ocrWorker = w; ocrKey = key;
     return w;
   }
+  // Rebuild paragraphs and stanzas from where the lines sit on the page:
+  // a clearly bigger gap than usual, or an indented first line, starts a new one.
+  function ocrToText(data) {
+    const lines = [];
+    for (const b of data.blocks || []) for (const p of b.paragraphs || []) for (const l of p.lines || []) {
+      const t = (l.text || "").replace(/\s+/g, " ").trim();
+      if (t) lines.push({ t, x: l.bbox.x0, y: l.bbox.y0, h: Math.max(1, l.bbox.y1 - l.bbox.y0), para: p });
+    }
+    if (!lines.length) return data.text || "";
+    const steps = [];
+    for (let i = 1; i < lines.length; i++) { const d = lines[i].y - lines[i - 1].y; if (d > 0) steps.push(d); }
+    steps.sort((a, b) => a - b);
+    const usual = steps.length ? steps[Math.floor(steps.length * 0.4)] : lines[0].h * 1.5;
+    let out = lines[0].t, left = lines[0].x;
+    for (let i = 1; i < lines.length; i++) {
+      const prev = lines[i - 1], cur = lines[i];
+      const d = cur.y - prev.y;
+      const gap = d < 0 || d > usual * 1.45;
+      const indented = cur.para !== prev.para && cur.x - left > cur.h * 1.2;
+      if (gap || indented) { out += "\n\n" + cur.t; left = cur.x; }
+      else { out += "\n" + cur.t; left = Math.min(left, cur.x); }
+    }
+    return out;
+  }
+
   function ocrPage(n, langs) {
     const doc = state.doc;
     const run = async () => {
@@ -635,7 +690,7 @@ header p { margin: 0; color: var(--muted); max-width: 62ch; }
       const w = await getOcrWorker(langs);
       const { data } = await w.recognize(c);
       c.width = c.height = 0;
-      return (data.text || "").replace(/\u200C/g, "").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+      return ocrToText(data).replace(/\u200C/g, "").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
     };
     const p = ocrQueue.then(run, run);
     ocrQueue = p.catch(() => {});
@@ -718,9 +773,11 @@ header p { margin: 0; color: var(--muted); max-width: 62ch; }
     state.mainLang = main;
     state.autoMain = autoMain;
     const chunks = [];
+    const lens = paras.flat().map((l) => [...l].length).sort((a, b) => a - b);
+    const fullWidth = lens.length ? lens[Math.floor((lens.length - 1) * 0.9)] : 0;
     let verseParas = 0;
     paras.forEach((lines, pi) => {
-      const verse = isVerse(lines);
+      const verse = isVerse(lines, fullWidth);
       if (verse) verseParas++;
       // A poem is read line by line; prose is read sentence by sentence.
       const units = verse ? lines : sentences(lines.join(" "), main);
@@ -746,11 +803,13 @@ header p { margin: 0; color: var(--muted); max-width: 62ch; }
     return chunks;
   }
 
-  function isVerse(lines) {
+  // Prose lines run the full width of the text; a poem's lines stop well short of it.
+  function isVerse(lines, fullWidth) {
     if (state.style === "verse") return lines.length >= 1;
     if (state.style === "prose" || lines.length < 2) return false;
-    const lens = lines.map((l) => [...l].length).sort((a, b) => a - b);
-    return lens[lens.length >> 1] <= 48; // short lines: a poem or song
+    const body = lines.slice(0, -1); // the last line of a prose paragraph is usually short
+    const full = body.filter((l) => [...l].length >= fullWidth * 0.8).length;
+    return full / body.length < 0.5;
   }
 
   function renderText() {
@@ -892,6 +951,7 @@ header p { margin: 0; color: var(--muted); max-width: 62ch; }
       const v = pickVoice(ch.lang);
       if (v) u.voice = v;
       u.rate = state.rate;
+      u.onstart = () => { state.fails = 0; clearMsg("speakfail"); };
       u.onend = () => {
         if (g !== state.gen) return;
         state.idx++;
@@ -902,6 +962,16 @@ header p { margin: 0; color: var(--muted); max-width: 62ch; }
         if (g !== state.gen) return;
         if (e.error === "interrupted" || e.error === "canceled") return;
         console.warn("speech error", e.error);
+        state.fails = (state.fails || 0) + 1;
+        if (state.fails >= 3) {
+          state.gen++; state.playing = false; state.fails = 0; updateUI();
+          const ln = baseName(ch.lang);
+          setStatus("Could not speak", "Your device could not read " + ln + " aloud");
+          showMsg("err", "<b>Your device could not read " + esc(ln) + " aloud.</b> It probably has no " + esc(ln) +
+            " voice. See the steps above to add one, or pick another voice, then press play.", "speakfail");
+          checkVoiceWarning();
+          return;
+        }
         if (e.error === "not-allowed") {
           state.playing = false; updateUI();
           setStatus("Press play to start", "Your browser needs a tap before it can speak");
