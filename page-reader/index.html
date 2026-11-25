@@ -567,7 +567,7 @@ header p { margin: 0; color: var(--muted); max-width: 62ch; }
     if (!t) return t;
     // A missing glyph mapping in front of a Hindi letter is almost always the short "i" sign.
     t = t.replace(/\u0000([क-हक़-य़]़?)/g, "$1ि");
-    t = t.replace(/[\u0000-\u0008\u000B\u000E-\u001F�]/g, "");
+    t = t.replace(/[\u0000-\u0008\u000B\u000E-\u001F\uFFFD]/g, "");
     for (const re of PREBASE) {
       for (let i = 0; i < 4; i++) {
         const next = t.replace(re, "$1$3$2");
