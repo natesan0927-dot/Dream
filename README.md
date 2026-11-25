@@ -20,3 +20,14 @@ Your inputs and rates are remembered in the browser.
 ## Notes
 
 Rates are indicative 2026 Indian rates (₹, excluding GST). Quantities use standard engineering rules of thumb, which are good for budgeting and comparing options. Get the structure designed by a licensed structural engineer and confirm setbacks and ground coverage with your planning authority before construction.
+
+---
+
+# Page Reader
+
+`page-reader/index.html` — open a PDF, Word (.docx) or text file, type a page number, and the app reads that page aloud in the language it is written in.
+
+- Detects the language of the page by its script (Tamil, Hindi, Marathi, Bengali, Telugu, Kannada, Malayalam, Gujarati, Punjabi, Odia, Urdu, Arabic, Persian, Russian, Chinese, Japanese, Korean, Thai and more) and, for Latin-script text, by common words (English, French, Spanish, German, Italian, Portuguese and others). Sentences in a second language on the same page are read with that language's voice.
+- Highlights each sentence as it is read; tap a sentence to start from there. Pause, stop, previous/next page, speed, voice, and "keep reading next pages".
+- Uses the browser's built-in speech voices. If your device has no voice for a language, the app shows how to install one (Android, Windows, iPhone/Mac).
+- Scanned PDFs (pictures of pages) have no text to read and need OCR first. Word and text files have no fixed pages, so they are split into pages of about 300 words.

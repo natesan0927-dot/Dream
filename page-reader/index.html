@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- PAGE-START -->
+<title>Page Reader</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap">
+<style>
+/* Layout: one column tool — file + page picker on top, a sticky player bar, then the page preview beside the text being read (stacked on phones). */
+:root {
+  --bg: #eef2f1;
+  --surface: #ffffff;
+  --ink: #16201e;
+  --muted: #5a6864;
+  --line: #d6dedb;
+  --accent: #0e6170;
+  --accent-ink: #ffffff;
+  --accent-soft: #dcecee;
+  --mark: #ffe28a;
+  --mark-ink: #16201e;
+  --warn-bg: #fff3d6;
+  --warn-ink: #634400;
+  --err-bg: #fde6e2;
+  --err-ink: #8a1f12;
+  --f-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --f-body: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --f-read: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Nirmala UI", "Latha", "Mangal", "Noto Sans Tamil", "Noto Sans Devanagari", "Noto Sans Arabic", "Noto Sans CJK SC", sans-serif;
+  --r: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #101615; --surface: #18201e; --ink: #e5ece9; --muted: #98a7a2; --line: #2a3532;
+    --accent: #5cc0d2; --accent-ink: #062226; --accent-soft: #173439;
+    --mark: #6b5814; --mark-ink: #fff8dc;
+    --warn-bg: #3a2e0c; --warn-ink: #ffdf8f; --err-bg: #3d1a14; --err-ink: #ffb4a6;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #101615; --surface: #18201e; --ink: #e5ece9; --muted: #98a7a2; --line: #2a3532;
+  --accent: #5cc0d2; --accent-ink: #062226; --accent-soft: #173439;
+  --mark: #6b5814; --mark-ink: #fff8dc;
+  --warn-bg: #3a2e0c; --warn-ink: #ffdf8f; --err-bg: #3d1a14; --err-ink: #ffb4a6;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  background: var(--bg); color: var(--ink);
+  font-family: var(--f-body); font-size: 15px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0 48px;
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+.wrap { max-width: 1100px; margin: 0 auto; display: grid; gap: 16px; }
+h1, h2 { font-family: var(--f-display); text-wrap: balance; margin: 0; }
+header { padding-block: 28px 4px; display: grid; gap: 6px; }
+header h1 { font-size: 1.9rem; letter-spacing: -0.01em; }
+header p { margin: 0; color: var(--muted); max-width: 62ch; }
+
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); }
+
+/* Open + page picker */
+.picker { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 12px; align-items: end; padding: 16px; }
+.drop {
+  display: flex; align-items: center; gap: 12px; min-width: 0;
+  border: 1.5px dashed var(--line); border-radius: 8px; padding: 12px 14px; cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.drop:hover, .drop.over { border-color: var(--accent); background: var(--accent-soft); }
+.drop:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.drop svg { flex: none; color: var(--accent); }
+.drop .txt { min-width: 0; display: grid; }
+.drop strong { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.drop small { color: var(--muted); }
+.drop input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.field { display: grid; gap: 4px; }
+.label { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.pagebox { display: flex; align-items: center; gap: 8px; }
+.pagebox input {
+  width: 6.5em; font: 600 1.15rem/1 var(--f-display); padding: 10px 10px; text-align: center;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.pagebox input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.pagebox span { color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.btn {
+  font: 600 15px/1 var(--f-body); border-radius: 8px; border: 1px solid var(--line);
+  background: var(--surface); color: var(--ink); padding: 12px 16px; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 8px; justify-content: center;
+}
+.btn:hover { border-color: var(--accent); }
+.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); padding-inline: 22px; }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.icon { padding: 10px; width: 44px; height: 44px; }
+
+/* Player bar */
+.player {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
+  padding: 10px 14px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px;
+  box-shadow: 0 6px 18px -14px rgba(0,0,0,.45);
+}
+.transport { display: flex; gap: 6px; align-items: center; }
+.btn.play { width: 52px; height: 52px; border-radius: 50%; background: var(--accent); border-color: var(--accent); color: var(--accent-ink); padding: 0; }
+.progress { display: grid; min-width: 0; flex: 1 1 160px; }
+.progress strong { font-family: var(--f-display); font-size: 1.05rem; }
+.progress small { color: var(--muted); font-variant-numeric: tabular-nums; }
+.settings { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: end; }
+.settings select {
+  font: 14px var(--f-body); padding: 7px 8px; border-radius: 7px; border: 1px solid var(--line);
+  background: var(--bg); color: var(--ink); max-width: 220px;
+}
+.settings input[type=range] { width: 120px; accent-color: var(--accent); }
+.rate { display: flex; align-items: center; gap: 8px; font-variant-numeric: tabular-nums; }
+.check { display: flex; align-items: center; gap: 6px; font-size: 14px; padding-bottom: 6px; cursor: pointer; }
+.check input { accent-color: var(--accent); width: 16px; height: 16px; }
+
+/* Messages */
+.msg { padding: 10px 14px; border-radius: 8px; font-size: 14px; }
+.msg.warn { background: var(--warn-bg); color: var(--warn-ink); }
+.msg.err { background: var(--err-bg); color: var(--err-ink); }
+.msg b { font-weight: 600; }
+.msg ul { margin: 6px 0 0; padding-left: 18px; }
+
+/* Reading area */
+.stage { display: grid; grid-template-columns: minmax(0, 300px) minmax(0, 1fr); gap: 16px; align-items: start; }
+.stage.nopreview { grid-template-columns: minmax(0, 1fr); }
+.preview { padding: 10px; display: grid; gap: 8px; position: sticky; top: calc(env(safe-area-inset-top, 0px) + 90px); }
+.preview canvas { width: 100%; height: auto; border-radius: 4px; background: #fff; box-shadow: 0 0 0 1px var(--line); }
+.preview small { color: var(--muted); text-align: center; }
+.reading { padding: 20px 24px 28px; min-width: 0; }
+.reading-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 12px; margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.reading-head h2 { font-size: 1.25rem; }
+.chip { font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
+.reading-head small { color: var(--muted); }
+#text { font-family: var(--f-read); font-size: 1.2rem; line-height: 1.85; max-width: 68ch; overflow-wrap: anywhere; }
+#text p { margin: 0 0 1em; }
+.chunk { cursor: pointer; border-radius: 3px; -webkit-box-decoration-break: clone; box-decoration-break: clone; transition: background .2s; }
+.chunk:hover { text-decoration: underline dotted var(--muted); text-underline-offset: 4px; }
+.chunk.now { background: var(--mark); color: var(--mark-ink); padding: 1px 2px; }
+.empty { color: var(--muted); font-family: var(--f-body); font-size: 1rem; }
+.hint { color: var(--muted); font-size: 13px; margin-top: 8px; }
+
+@media (max-width: 760px) {
+  .picker { grid-template-columns: minmax(0, 1fr) auto; }
+  .picker .drop { grid-column: 1 / -1; }
+  .stage { grid-template-columns: minmax(0, 1fr); }
+  .preview { position: static; max-width: 260px; justify-self: center; width: 100%; }
+  .reading { padding: 16px; }
+  .player { gap: 10px 12px; }
+  .settings select { max-width: 100%; }
+}
+@media (max-width: 420px) {
+  .picker { grid-template-columns: minmax(0, 1fr); }
+  .picker .btn.primary { width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Page Reader</h1>
+    <p>Open a book or document, type a page number, and hear that page read aloud in the language it is written in.</p>
+  </header>
+
+  <section class="card picker" aria-label="Choose file and page">
+    <label class="drop" id="drop" for="file">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M12 17v-6"/><path d="M9.5 13.5 12 11l2.5 2.5"/></svg>
+      <span class="txt">
+        <strong id="fileName">Sample document</strong>
+        <small id="fileHint">Choose a file or drop it here · PDF, Word (.docx) or text</small>
+      </span>
+      <input type="file" id="file" accept=".pdf,.docx,.txt,.text,.md,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+    </label>
+    <div class="field">
+      <label class="label" for="page">Page</label>
+      <div class="pagebox">
+        <input type="number" id="page" min="1" value="2" inputmode="numeric">
+        <span id="pageTotal">of 4</span>
+      </div>
+    </div>
+    <button class="btn primary" id="readBtn" type="button">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4.5v15l12-7.5z"/></svg>
+      Read page
+    </button>
+  </section>
+
+  <section class="card player" aria-label="Player">
+    <div class="transport">
+      <button class="btn icon" id="prevBtn" type="button" title="Previous page" aria-label="Previous page">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 5h2v14H6zM20 5v14L9.5 12z"/></svg>
+      </button>
+      <button class="btn play" id="playBtn" type="button" title="Play" aria-label="Play">
+        <svg id="icPlay" width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+        <svg id="icPause" width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" hidden><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg>
+      </button>
+      <button class="btn icon" id="stopBtn" type="button" title="Stop" aria-label="Stop">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg>
+      </button>
+      <button class="btn icon" id="nextBtn" type="button" title="Next page" aria-label="Next page">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16 5h2v14h-2zM4 5v14l10.5-7z"/></svg>
+      </button>
+    </div>
+    <div class="progress" aria-live="polite">
+      <strong id="statusMain">Ready</strong>
+      <small id="statusSub">Press Read page to start</small>
+    </div>
+    <div class="settings">
+      <div class="field">
+        <label class="label" for="lang">Language</label>
+        <select id="lang"></select>
+      </div>
+      <div class="field">
+        <label class="label" for="voice">Voice</label>
+        <select id="voice"></select>
+      </div>
+      <div class="field">
+        <label class="label" for="rate">Speed</label>
+        <div class="rate"><input type="range" id="rate" min="0.5" max="2" step="0.1" value="1"><span id="rateVal">1.0×</span></div>
+      </div>
+      <label class="check"><input type="checkbox" id="autoNext" checked> Keep reading next pages</label>
+    </div>
+  </section>
+
+  <div id="msgs" class="wrap" style="gap:8px" aria-live="polite"></div>
+
+  <section class="stage" id="stage">
+    <aside class="card preview" id="preview" hidden>
+      <canvas id="canvas" aria-label="Picture of the page"></canvas>
+      <small id="previewCap">Page 1</small>
+    </aside>
+    <article class="card reading">
+      <div class="reading-head">
+        <h2 id="pageTitle">Page 2</h2>
+        <span class="chip" id="langChip">Tamil</span>
+        <small id="langAlso"></small>
+      </div>
+      <div id="text"></div>
+      <p class="hint">Tap any sentence to start reading from there.</p>
+    </article>
+  </section>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+<script>
+(() => {
+  "use strict";
+  const $ = (s) => document.querySelector(s);
+  const synth = window.speechSynthesis;
+
+  if (window.pdfjsLib) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  }
+
+  // ---------- Sample document (shown until the user opens a file) ----------
+  const SAMPLE = [
+    "Welcome to Page Reader.\n\nOpen any PDF, Word or text file with the button above. Type the page number you want and press Read page. The app finds the language of the page by itself and reads it with a matching voice.\n\nThis sample has four pages, each in a different language. Try pages 2, 3 and 4.",
+    "வணக்கம். இது ஒரு மாதிரிப் பக்கம்.\n\nஇந்தச் செயலி, பக்கத்தில் உள்ள உரையை அதன் மூல மொழியிலேயே உரக்கப் படிக்கும். உங்கள் கோப்பைப் பதிவேற்றி, பக்க எண்ணை உள்ளிட்டு, படி என்ற பொத்தானை அழுத்துங்கள்.\n\nகற்க கசடறக் கற்பவை கற்றபின் நிற்க அதற்குத் தக.",
+    "नमस्ते। यह एक नमूना पृष्ठ है।\n\nयह ऐप पृष्ठ के पाठ को उसकी मूल भाषा में ही पढ़कर सुनाता है। अपनी फ़ाइल अपलोड करें, पृष्ठ संख्या लिखें और पढ़ें बटन दबाएँ।",
+    "Bonjour. Ceci est une page d'exemple.\n\nCette application lit le texte de la page à voix haute, dans la langue d'origine. Ouvrez votre fichier, saisissez le numéro de page et appuyez sur le bouton de lecture."
+  ];
+
+  // ---------- Languages ----------
+  const LANGS = ["ta-IN","hi-IN","mr-IN","bn-IN","te-IN","kn-IN","ml-IN","gu-IN","pa-IN","or-IN","ur-PK","ne-NP","si-LK",
+    "en-US","en-GB","en-IN","es-ES","fr-FR","de-DE","it-IT","pt-BR","pt-PT","nl-NL","sv-SE","pl-PL","ro-RO","tr-TR","id-ID","ms-MY","vi-VN",
+    "ru-RU","uk-UA","el-GR","ar-SA","fa-IR","he-IL","th-TH","zh-CN","zh-TW","ja-JP","ko-KR"];
+  let dn = null;
+  try { dn = new Intl.DisplayNames(["en"], { type: "language" }); } catch (e) {}
+  const langName = (code) => {
+    if (!code) return "Unknown";
+    try { return dn ? dn.of(code) : code; } catch (e) { return code; }
+  };
+  const baseName = (code) => {
+    const b = (code || "").split("-")[0];
+    try { return dn ? dn.of(b) : b; } catch (e) { return b; }
+  };
+
+  // Script detection by Unicode block
+  const SCRIPTS = [
+    ["tamil", /[஀-௿]/g], ["deva", /[ऀ-ॿ]/g], ["beng", /[ঀ-৿]/g],
+    ["guru", /[਀-੿]/g], ["gujr", /[઀-૿]/g], ["orya", /[଀-୿]/g],
+    ["telu", /[ఀ-౿]/g], ["knda", /[ಀ-೿]/g], ["mlym", /[ഀ-ൿ]/g],
+    ["sinh", /[඀-෿]/g], ["thai", /[฀-๿]/g], ["laoo", /[຀-໿]/g],
+    ["mymr", /[က-႟]/g], ["khmr", /[ក-៿]/g], ["hebr", /[֐-׿]/g],
+    ["arab", /[؀-ۿݐ-ݿﭐ-﷿ﹰ-﻿]/g], ["cyrl", /[Ѐ-ӿ]/g],
+    ["grek", /[Ͱ-Ͽ]/g], ["geor", /[Ⴀ-ჿ]/g], ["armn", /[԰-֏]/g],
+    ["ethi", /[ሀ-፿]/g], ["kana", /[぀-ヿ]/g], ["hang", /[가-힯ᄀ-ᇿ]/g],
+    ["hani", /[一-鿿㐀-䶿]/g], ["latn", /[A-Za-zÀ-ɏ]/g]
+  ];
+  const SCRIPT_LANG = { tamil:"ta-IN", deva:"hi-IN", beng:"bn-IN", guru:"pa-IN", gujr:"gu-IN", orya:"or-IN", telu:"te-IN",
+    knda:"kn-IN", mlym:"ml-IN", sinh:"si-LK", thai:"th-TH", laoo:"lo-LA", mymr:"my-MM", khmr:"km-KH", hebr:"he-IL",
+    arab:"ar-SA", cyrl:"ru-RU", grek:"el-GR", geor:"ka-GE", armn:"hy-AM", ethi:"am-ET", kana:"ja-JP", hang:"ko-KR", hani:"zh-CN", latn:"en-US" };
+
+  function detectScript(t) {
+    let best = null, bestN = 0;
+    const counts = {};
+    for (const [k, re] of SCRIPTS) {
+      const n = (t.match(re) || []).length;
+      counts[k] = n;
+      if (n > bestN) { best = k; bestN = n; }
+    }
+    if (best === "hani" && counts.kana > 0) best = "kana"; // Japanese mixes kanji + kana
+    return best;
+  }
+
+  const LATIN_WORDS = {
+    "en-US": "the and of to is in that it for was with as on be are this you not have he she they his her from at by",
+    "es-ES": "el la de que y en los se del las por un para con no una su es al lo como más pero sus le",
+    "fr-FR": "le la les de des et est en un une du que qui dans pour pas sur au avec ce il elle sont ne",
+    "de-DE": "der die und das ist nicht ein eine zu den mit von sich des auf für im dem auch es ich",
+    "it-IT": "il di che la e un una per non è sono gli del della le con si da al nel come anche",
+    "pt-BR": "o a de que e do da em um uma para com não os no na se por mais as dos é",
+    "nl-NL": "de het een en van is dat niet op te zijn met voor in die er ook maar",
+    "sv-SE": "och att det som en på är av för med till den har inte jag ett om",
+    "pl-PL": "i w nie się na że z jest do to jak o co ale tak już",
+    "ro-RO": "și în de la cu nu pe un o care este să din mai sau",
+    "tr-TR": "ve bir bu da de için ile ne çok gibi daha olarak ama ben değil",
+    "id-ID": "dan yang di ini itu dengan untuk tidak dari dalam akan ada adalah saya pada",
+    "vi-VN": "và của là có không được trong cho những một người này các đã"
+  };
+  const LATIN_SETS = Object.fromEntries(Object.entries(LATIN_WORDS).map(([k, v]) => [k, new Set(v.split(" "))]));
+
+  function guessLatin(t) {
+    const words = (t.toLowerCase().match(/[a-zÀ-ɏẠ-ỹ']+/g) || []).slice(0, 3000);
+    if (!words.length) return "en-US";
+    let best = "en-US", bestScore = 0;
+    for (const [lang, set] of Object.entries(LATIN_SETS)) {
+      let s = 0;
+      for (const w of words) if (set.has(w)) s++;
+      if (s > bestScore) { best = lang; bestScore = s; }
+    }
+    return best;
+  }
+
+  function langForScript(script, t, latinGuess) {
+    if (!script) return null;
+    if (script === "latn") return latinGuess || guessLatin(t);
+    if (script === "arab") {
+      if (/[ےٹڈڑںھ]/.test(t)) return "ur-PK";
+      if (/[پچژگ]/.test(t) && !/[ةى]/.test(t)) return "fa-IR";
+      return "ar-SA";
+    }
+    if (script === "cyrl" && /[іїєґІЇЄҐ]/.test(t)) return "uk-UA";
+    if (script === "deva" && /ळ|(^|\s)आहे([\s.,।]|$)/.test(t)) return "mr-IN";
+    return SCRIPT_LANG[script];
+  }
+  const RTL = new Set(["ar", "fa", "ur", "he"]);
+  const isRTL = (l) => RTL.has((l || "").split("-")[0]);
+
+  // ---------- Sentence splitting ----------
+  const MAX_CHUNK = 220;
+  function sentences(p, lang) {
+    if (window.Intl && Intl.Segmenter) {
+      try {
+        const seg = new Intl.Segmenter(lang || undefined, { granularity: "sentence" });
+        return Array.from(seg.segment(p), (s) => s.segment.trim()).filter(Boolean);
+      } catch (e) {}
+    }
+    return (p.match(/[^.!?।॥。！？]+[.!?।॥。！？]+["'”’)\]]*\s*|[^.!?।॥。！？]+$/g) || [p]).map((s) => s.trim()).filter(Boolean);
+  }
+  function splitLong(s) {
+    if (s.length <= MAX_CHUNK) return [s];
+    const out = [];
+    let cur = "";
+    for (const part of s.split(/(?<=[,;:،、，])\s+|\s+/)) {
+      if (cur && (cur + " " + part).length > MAX_CHUNK) { out.push(cur); cur = part; }
+      else cur = cur ? cur + " " + part : part;
+    }
+    if (cur) out.push(cur);
+    return out;
+  }
+
+  // ---------- State ----------
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem("pagereader." + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem("pagereader." + k, JSON.stringify(v)); } catch (e) {} }
+  };
+  const state = {
+    doc: { name: "Sample document", kind: "text", pages: SAMPLE, total: SAMPLE.length, sample: true },
+    pageNum: 0, pageText: "", chunks: [], idx: 0, playing: false, gen: 0,
+    langOverride: "auto", voiceOverride: "", mainLang: "en-US", voices: [],
+    rate: store.get("rate", 1), autoNext: store.get("autoNext", true), renderTask: null, loading: 0
+  };
+
+  // ---------- Messages ----------
+  function showMsg(kind, html, key) {
+    const box = $("#msgs");
+    if (key) { const old = box.querySelector(`[data-key="${key}"]`); if (old) old.remove(); }
+    const d = document.createElement("div");
+    d.className = "msg " + kind;
+    if (key) d.dataset.key = key;
+    d.innerHTML = html;
+    box.appendChild(d);
+  }
+  function clearMsg(key) {
+    const box = $("#msgs");
+    if (!key) { box.innerHTML = ""; return; }
+    const old = box.querySelector(`[data-key="${key}"]`); if (old) old.remove();
+  }
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  function setStatus(main, sub) { $("#statusMain").textContent = main; $("#statusSub").textContent = sub || ""; }
+
+  // ---------- Opening files ----------
+  function paginate(text, size = 1800) {
+    const paras = text.replace(/\r/g, "").split(/\n\s*\n/);
+    const pages = [];
+    let cur = "";
+    for (const p of paras) {
+      if (cur && cur.length + p.length > size) { pages.push(cur); cur = p; }
+      else cur = cur ? cur + "\n\n" + p : p;
+    }
+    if (cur.trim()) pages.push(cur);
+    return pages.length ? pages : [""];
+  }
+
+  async function openFile(file) {
+    stop();
+    clearMsg();
+    const ext = (file.name.split(".").pop() || "").toLowerCase();
+    $("#fileName").textContent = file.name;
+    $("#fileHint").textContent = "Opening…";
+    setStatus("Opening file", file.name);
+    try {
+      let doc;
+      if (ext === "pdf" || file.type === "application/pdf") {
+        if (!window.pdfjsLib) throw new Error("The PDF reader did not load. Check your internet connection and reload the page.");
+        const data = new Uint8Array(await file.arrayBuffer());
+        const pdf = await pdfjsLib.getDocument({
+          data,
+          cMapUrl: "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/cmaps/",
+          cMapPacked: true,
+          standardFontDataUrl: "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/standard_fonts/"
+        }).promise;
+        doc = { name: file.name, kind: "pdf", pdf, total: pdf.numPages, cache: {} };
+      } else if (ext === "docx") {
+        if (!window.mammoth) throw new Error("The Word reader did not load. Check your internet connection and reload the page.");
+        const r = await mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() });
+        const pages = paginate(r.value);
+        doc = { name: file.name, kind: "text", pages, total: pages.length, approx: true };
+      } else if (["txt", "text", "md"].includes(ext) || (file.type || "").startsWith("text/")) {
+        const t = await file.text();
+        const pages = t.includes("\f") ? t.split("\f") : paginate(t);
+        doc = { name: file.name, kind: "text", pages, total: pages.length, approx: !t.includes("\f") };
+      } else {
+        throw new Error("This app reads PDF, Word (.docx) and text files. Save your file in one of those formats and open it again.");
+      }
+      state.doc = doc;
+      state.langOverride = "auto";
+      $("#lang").value = "auto";
+      state.voiceOverride = "";
+      $("#fileHint").textContent = `${doc.total} page${doc.total === 1 ? "" : "s"}` +
+        (doc.approx ? " · Word and text files have no fixed pages, so each page here is about 300 words" : "") + " · Choose another file";
+      $("#pageTotal").textContent = "of " + doc.total;
+      $("#page").max = doc.total;
+      $("#page").value = 1;
+      $("#page").focus();
+      $("#page").select();
+      state.pageNum = 0;
+      await showPage(1);
+      setStatus("File opened", "Type a page number and press Read page");
+    } catch (e) {
+      console.error(e);
+      $("#fileHint").textContent = "Could not open this file · Choose another file";
+      const m = e && e.name === "PasswordException" ? "This PDF is password protected. Remove the password and open it again." : (e && e.message) || String(e);
+      showMsg("err", "<b>Could not open the file.</b> " + esc(m), "open");
+      setStatus("Could not open file", file.name);
+    }
+  }
+
+  async function pdfPageText(pdf, n) {
+    const page = await pdf.getPage(n);
+    const tc = await page.getTextContent();
+    let out = "", lastY = null, lastEnd = null;
+    for (const it of tc.items) {
+      if (typeof it.str !== "string") continue;
+      const x = it.transform[4], y = it.transform[5];
+      const h = Math.abs(it.transform[3]) || it.height || 10;
+      if (lastY !== null && Math.abs(y - lastY) > h * 0.5) {
+        if (Math.abs(y - lastY) > h * 1.9) out = out.replace(/\s*$/, "\n\n");
+        else if (!out.endsWith("\n")) out += "\n";
+      } else if (lastEnd !== null && x - lastEnd > h * 0.2 && !/\s$/.test(out) && !/^\s/.test(it.str)) {
+        out += " ";
+      }
+      out += it.str;
+      if (it.hasEOL && !out.endsWith("\n")) out += "\n";
+      if (it.str.length || it.hasEOL) { lastY = y; lastEnd = it.hasEOL ? null : x + (it.width || 0); }
+    }
+    return out.replace(/([a-z])-\n([a-z])/g, "$1$2");
+  }
+
+  async function getPageText(n) {
+    const d = state.doc;
+    if (d.kind === "pdf") {
+      if (!(n in d.cache)) d.cache[n] = await pdfPageText(d.pdf, n);
+      return d.cache[n];
+    }
+    return d.pages[n - 1] || "";
+  }
+
+  async function renderPreview(n) {
+    const d = state.doc;
+    const box = $("#preview");
+    if (d.kind !== "pdf") { box.hidden = true; $("#stage").classList.add("nopreview"); return; }
+    box.hidden = false; $("#stage").classList.remove("nopreview");
+    try {
+      if (state.renderTask) { try { state.renderTask.cancel(); } catch (e) {} }
+      const page = await d.pdf.getPage(n);
+      const vp1 = page.getViewport({ scale: 1 });
+      const cssW = Math.min(280, box.clientWidth - 20 || 280);
+      const scale = (cssW / vp1.width) * Math.min(window.devicePixelRatio || 1, 2.5);
+      const vp = page.getViewport({ scale });
+      const c = $("#canvas");
+      c.width = Math.floor(vp.width); c.height = Math.floor(vp.height);
+      state.renderTask = page.render({ canvasContext: c.getContext("2d"), viewport: vp });
+      await state.renderTask.promise;
+      $("#previewCap").textContent = "Page " + n + " of " + d.total;
+    } catch (e) {
+      if (e && e.name === "RenderingCancelledException") return;
+      console.warn(e);
+    }
+  }
+
+  // ---------- Building the page ----------
+  function buildChunks(text) {
+    const paras = text.replace(/\r/g, "").split(/\n\s*\n/)
+      .map((p) => p.replace(/\s*\n\s*/g, " ").replace(/\s+/g, " ").trim()).filter(Boolean);
+    const latinText = (text.match(/[A-Za-zÀ-ɏ']+/g) || []).join(" ");
+    const latinGuess = guessLatin(latinText);
+    const mainScript = detectScript(text);
+    const autoMain = langForScript(mainScript, text, latinGuess) || "en-US";
+    const main = state.langOverride !== "auto" ? state.langOverride : autoMain;
+    state.mainLang = main;
+    state.autoMain = autoMain;
+    const chunks = [];
+    paras.forEach((p, pi) => {
+      for (const s of sentences(p, main)) {
+        for (const piece of splitLong(s)) {
+          let lang = main;
+          if (state.langOverride === "auto") {
+            const sc = detectScript(piece);
+            if (sc && sc !== mainScript) lang = langForScript(sc, piece, latinGuess) || main;
+          }
+          chunks.push({ text: piece, para: pi, lang });
+        }
+      }
+    });
+    return chunks;
+  }
+
+  function renderText() {
+    const pane = $("#text");
+    pane.innerHTML = "";
+    const n = state.pageNum;
+    $("#pageTitle").textContent = "Page " + n;
+    if (!state.chunks.length) {
+      $("#langChip").hidden = true;
+      $("#langAlso").textContent = "";
+      const p = document.createElement("p");
+      p.className = "empty";
+      p.textContent = state.doc.kind === "pdf"
+        ? "There is no readable text on this page. It may be blank, or it may be a scanned picture of a page. Scanned pages need to be converted with OCR (text recognition) before they can be read aloud."
+        : "This page is empty.";
+      pane.appendChild(p);
+      return;
+    }
+    const chip = $("#langChip");
+    chip.hidden = false;
+    chip.textContent = baseName(state.mainLang) + (state.langOverride === "auto" ? "" : " (chosen)");
+    const others = [...new Set(state.chunks.map((c) => c.lang).filter((l) => l !== state.mainLang))];
+    $("#langAlso").textContent = others.length ? "also " + others.map(baseName).join(", ") : "";
+    let p = null, last = -1;
+    state.chunks.forEach((c, i) => {
+      if (c.para !== last) { p = document.createElement("p"); p.dir = "auto"; pane.appendChild(p); last = c.para; }
+      const s = document.createElement("span");
+      s.className = "chunk";
+      s.textContent = c.text;
+      s.dataset.i = i;
+      s.lang = c.lang;
+      if (isRTL(c.lang)) s.dir = "rtl";
+      p.append(s, " ");
+    });
+  }
+
+  async function showPage(n) {
+    const d = state.doc;
+    n = Math.max(1, Math.min(d.total, Math.floor(n) || 1));
+    const ticket = ++state.loading;
+    $("#page").value = n;
+    clearMsg("page");
+    setStatus("Loading page " + n, "");
+    let text = "";
+    try { text = await getPageText(n); }
+    catch (e) {
+      console.error(e);
+      showMsg("err", "<b>Could not read page " + n + ".</b> " + esc((e && e.message) || e), "page");
+    }
+    if (ticket !== state.loading) return false;
+    state.pageNum = n;
+    state.pageText = text;
+    state.chunks = buildChunks(text);
+    state.idx = 0;
+    renderText();
+    refreshVoices();
+    renderPreview(n);
+    updateUI();
+    return true;
+  }
+
+  // ---------- Voices ----------
+  const norm = (v) => (v.lang || "").toLowerCase().replace("_", "-");
+  function voicesFor(lang) {
+    const L = (lang || "").toLowerCase(), base = L.split("-")[0];
+    const exact = state.voices.filter((v) => norm(v) === L);
+    const partial = state.voices.filter((v) => norm(v).split("-")[0] === base && norm(v) !== L);
+    return exact.concat(partial);
+  }
+  function pickVoice(lang) {
+    if (state.voiceOverride && lang === state.mainLang) {
+      const v = state.voices.find((x) => x.voiceURI === state.voiceOverride);
+      if (v) return v;
+    }
+    const list = voicesFor(lang);
+    return list.find((v) => /google|natural|neural|premium|enhanced/i.test(v.name)) || list.find((v) => v.default) || list[0] || null;
+  }
+  function refreshVoices() {
+    const sel = $("#voice");
+    const list = voicesFor(state.mainLang);
+    sel.innerHTML = "";
+    const auto = new Option(list.length ? "Best match" : "No voice installed", "");
+    sel.add(auto);
+    for (const v of list) sel.add(new Option(`${v.name} (${v.lang})`, v.voiceURI));
+    sel.value = list.some((v) => v.voiceURI === state.voiceOverride) ? state.voiceOverride : "";
+    sel.disabled = !list.length;
+    checkVoiceWarning();
+  }
+  function checkVoiceWarning() {
+    if (!synth) return;
+    if (!state.voices.length) return; // voices not loaded yet
+    const langs = [...new Set(state.chunks.map((c) => c.lang))];
+    const missing = langs.filter((l) => !voicesFor(l).length);
+    if (!missing.length) { clearMsg("voice"); return; }
+    const names = missing.map(baseName).join(", ");
+    showMsg("warn",
+      `<b>This device has no ${esc(names)} voice.</b> The app will still ask your device to read it in ${esc(names)}, but you may hear nothing or a wrong accent. To add a voice:` +
+      `<ul><li><b>Android:</b> Settings → search “Text-to-speech” → Preferred engine: Speech Services by Google → settings → Install voice data → choose the language.</li>` +
+      `<li><b>Windows:</b> Settings → Time &amp; language → Speech → Add voices (or Language &amp; region → add the language with speech). Microsoft Edge also has online voices for many languages.</li>` +
+      `<li><b>iPhone / iPad / Mac:</b> Settings → Accessibility → Spoken Content → Voices → choose the language and download a voice.</li></ul>`,
+      "voice");
+  }
+  function loadVoices() {
+    if (!synth) return;
+    state.voices = synth.getVoices() || [];
+    refreshVoices();
+  }
+
+  // ---------- Speaking ----------
+  function speakFrom(i) {
+    if (!synth) return;
+    if (!state.chunks.length) { setStatus("Nothing to read", "Page " + state.pageNum + " has no text"); return; }
+    const g = ++state.gen;
+    state.idx = Math.max(0, Math.min(i, state.chunks.length - 1));
+    state.playing = true;
+    updateUI();
+    const step = () => {
+      if (g !== state.gen) return;
+      if (state.idx >= state.chunks.length) { pageDone(); return; }
+      const ch = state.chunks[state.idx];
+      const u = new SpeechSynthesisUtterance(ch.text);
+      u.lang = ch.lang;
+      const v = pickVoice(ch.lang);
+      if (v) u.voice = v;
+      u.rate = state.rate;
+      u.onend = () => { if (g !== state.gen) return; state.idx++; step(); };
+      u.onerror = (e) => {
+        if (g !== state.gen) return;
+        if (e.error === "interrupted" || e.error === "canceled") return;
+        console.warn("speech error", e.error);
+        if (e.error === "not-allowed") {
+          state.playing = false; updateUI();
+          setStatus("Press play to start", "Your browser needs a tap before it can speak");
+          return;
+        }
+        state.idx++; step();
+      };
+      window.__pageReaderUtterance = u; // keeps Chrome from dropping the end event
+      highlight(state.idx);
+      updateProgress();
+      synth.speak(u);
+      if (synth.paused) synth.resume();
+    };
+    if (synth.speaking || synth.pending) { synth.cancel(); setTimeout(step, 80); }
+    else step();
+  }
+
+  async function pageDone() {
+    const d = state.doc;
+    highlight(-1);
+    if (state.autoNext && state.pageNum < d.total) {
+      const g = state.gen;
+      const ok = await showPage(state.pageNum + 1);
+      if (!ok || g !== state.gen) return;
+      if (state.chunks.length) speakFrom(0);
+      else pageDone();
+      return;
+    }
+    state.playing = false;
+    state.idx = 0;
+    updateUI();
+    setStatus("Finished page " + state.pageNum, state.pageNum < d.total ? "Press next to go on to page " + (state.pageNum + 1) : "End of document");
+  }
+
+  function pause() {
+    state.gen++;
+    if (synth) synth.cancel();
+    state.playing = false;
+    updateUI();
+    updateProgress("Paused");
+  }
+  function stop() {
+    state.gen++;
+    if (synth) synth.cancel();
+    state.playing = false;
+    state.idx = 0;
+    highlight(-1);
+    updateUI();
+    updateProgress("Stopped");
+  }
+
+  function highlight(i) {
+    const pane = $("#text");
+    const old = pane.querySelector(".chunk.now");
+    if (old) old.classList.remove("now");
+    if (i < 0) return;
+    const el = pane.querySelector(`.chunk[data-i="${i}"]`);
+    if (!el) return;
+    el.classList.add("now");
+    const r = el.getBoundingClientRect();
+    if (r.top < 120 || r.bottom > window.innerHeight - 40) {
+      const reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+      el.scrollIntoView({ block: "center", behavior: reduce ? "auto" : "smooth" });
+    }
+  }
+
+  function updateProgress(word) {
+    const n = state.chunks.length;
+    const lang = state.chunks[state.idx] ? state.chunks[state.idx].lang : state.mainLang;
+    if (!n) { setStatus("Page " + state.pageNum, "No text on this page"); return; }
+    const head = word ? `${word} · page ${state.pageNum}` : `Reading page ${state.pageNum}`;
+    setStatus(head, `Sentence ${Math.min(state.idx + 1, n)} of ${n} · ${baseName(lang)}`);
+  }
+
+  function updateUI() {
+    const playing = state.playing;
+    $("#icPlay").hidden = playing;
+    $("#icPause").hidden = !playing;
+    $("#playBtn").title = playing ? "Pause" : "Play";
+    $("#playBtn").setAttribute("aria-label", playing ? "Pause" : "Play");
+    $("#prevBtn").disabled = state.pageNum <= 1;
+    $("#nextBtn").disabled = state.pageNum >= state.doc.total;
+    $("#pageTotal").textContent = "of " + state.doc.total;
+    $("#page").max = state.doc.total;
+  }
+
+  // ---------- Controls ----------
+  async function readRequested() {
+    if (!synth) return;
+    const d = state.doc;
+    const raw = $("#page").value.trim();
+    const n = parseInt(raw, 10);
+    if (!raw || isNaN(n) || n < 1 || n > d.total) {
+      showMsg("err", `<b>Page ${esc(raw || "?")} does not exist.</b> This file has pages 1 to ${d.total}.`, "page");
+      $("#page").focus();
+      return;
+    }
+    // Speak something inside the click so mobile browsers unlock audio.
+    stop();
+    if (n !== state.pageNum) {
+      try { synth.speak(new SpeechSynthesisUtterance(" ")); } catch (e) {}
+      const ok = await showPage(n);
+      if (!ok) return;
+    }
+    speakFrom(0);
+  }
+
+  function setup() {
+    // Language list
+    const ls = $("#lang");
+    ls.add(new Option("Automatic", "auto"));
+    LANGS.map((c) => [c, langName(c)]).sort((a, b) => a[1].localeCompare(b[1]))
+      .forEach(([c, name]) => ls.add(new Option(name, c)));
+    ls.value = "auto";
+
+    $("#rate").value = state.rate;
+    $("#rateVal").textContent = Number(state.rate).toFixed(1) + "×";
+    $("#autoNext").checked = !!state.autoNext;
+
+    if (!synth || !window.SpeechSynthesisUtterance) {
+      showMsg("err", "<b>This browser cannot read aloud.</b> Open the app in Chrome, Edge or Safari.", "nosynth");
+      ["#readBtn", "#playBtn", "#stopBtn"].forEach((s) => ($(s).disabled = true));
+    } else {
+      loadVoices();
+      if ("onvoiceschanged" in synth) synth.addEventListener("voiceschanged", loadVoices);
+      let tries = 0;
+      const poll = setInterval(() => { tries++; if (synth.getVoices().length !== state.voices.length) loadVoices(); if (tries > 10) clearInterval(poll); }, 500);
+    }
+
+    $("#file").addEventListener("change", (e) => { const f = e.target.files[0]; if (f) openFile(f); e.target.value = ""; });
+    const drop = $("#drop");
+    ["dragenter", "dragover"].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add("over"); }));
+    ["dragleave", "drop"].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove("over"); }));
+    drop.addEventListener("drop", (e) => { const f = e.dataTransfer.files[0]; if (f) openFile(f); });
+    document.addEventListener("dragover", (e) => e.preventDefault());
+    document.addEventListener("drop", (e) => { e.preventDefault(); const f = e.dataTransfer && e.dataTransfer.files[0]; if (f) openFile(f); });
+
+    $("#readBtn").addEventListener("click", readRequested);
+    $("#page").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); readRequested(); } });
+    $("#playBtn").addEventListener("click", () => {
+      if (state.playing) pause();
+      else speakFrom(state.idx);
+    });
+    $("#stopBtn").addEventListener("click", stop);
+    $("#prevBtn").addEventListener("click", async () => {
+      const was = state.playing; stop();
+      if (await showPage(state.pageNum - 1)) { if (was) speakFrom(0); else updateProgress("Ready"); }
+    });
+    $("#nextBtn").addEventListener("click", async () => {
+      const was = state.playing; stop();
+      if (await showPage(state.pageNum + 1)) { if (was) speakFrom(0); else updateProgress("Ready"); }
+    });
+    $("#text").addEventListener("click", (e) => {
+      const el = e.target.closest(".chunk");
+      if (el) speakFrom(+el.dataset.i);
+    });
+    $("#rate").addEventListener("input", (e) => {
+      state.rate = +e.target.value;
+      $("#rateVal").textContent = state.rate.toFixed(1) + "×";
+      store.set("rate", state.rate);
+    });
+    $("#rate").addEventListener("change", () => { if (state.playing) speakFrom(state.idx); });
+    $("#autoNext").addEventListener("change", (e) => { state.autoNext = e.target.checked; store.set("autoNext", state.autoNext); });
+    $("#lang").addEventListener("change", (e) => {
+      state.langOverride = e.target.value;
+      state.voiceOverride = "";
+      const keep = state.idx, was = state.playing;
+      state.gen++; if (synth) synth.cancel();
+      state.chunks = buildChunks(state.pageText);
+      renderText();
+      refreshVoices();
+      if (was) speakFrom(Math.min(keep, state.chunks.length - 1));
+      else { state.playing = false; updateUI(); }
+    });
+    $("#voice").addEventListener("change", (e) => {
+      state.voiceOverride = e.target.value;
+      if (state.playing) speakFrom(state.idx);
+    });
+    window.addEventListener("beforeunload", () => { if (synth) synth.cancel(); });
+
+    showPage(2).then(() => setStatus("Ready", "Sample loaded · press Read page or open your own file"));
+  }
+
+  setup();
+})();
+</script>
+<!-- PAGE-END -->
+</body>
+</html>
