@@ -233,7 +233,8 @@ header p { margin: 0; color: var(--muted); max-width: 62ch; }
         <label class="label" for="source">Get text from</label>
         <select id="source">
           <option value="auto">Automatic</option>
-          <option value="ocr">Page picture (OCR)</option>
+          <option value="claude">Claude reads the page picture</option>
+          <option value="ocr">Built-in text recognition (OCR)</option>
           <option value="text">Text inside the file</option>
         </select>
       </div>
@@ -496,7 +497,16 @@ header p { margin: 0; color: var(--muted); max-width: 62ch; }
       $("#page").focus();
       $("#page").select();
       state.pageNum = 0;
-      await showPage(1);
+      state.chunks = []; state.pageText = ""; state.pageSrc = ""; state.paraTypes = null;
+      state.idx = 0;
+      $("#pageTitle").textContent = "Ready";
+      $("#langChip").hidden = true; $("#langAlso").textContent = ""; $("#srcNote").textContent = "";
+      const ph = document.createElement("p");
+      ph.className = "empty";
+      ph.textContent = `Type a page number from 1 to ${doc.total} above and press Read page.`;
+      $("#text").replaceChildren(ph);
+      renderPreview(1);
+      updateUI();
       setStatus("File opened", "Type a page number and press Read page");
     } catch (e) {
       console.error(e);
@@ -697,14 +707,131 @@ header p { margin: 0; color: var(--muted); max-width: 62ch; }
     return p;
   }
 
-  async function loadPdfPage(n) {
+  // ---------- Claude reads the page picture ----------
+  // Uses the viewer's own Claude account through the artifact "sample" capability.
+  let samplePromise = null;
+  function getClaude() {
+    if (state.claudeOff) return Promise.resolve(null);
+    if (!samplePromise) {
+      samplePromise = (async () => {
+        if (!window.claude || typeof window.claude.use !== "function") return null;
+        const s = await window.claude.use("sample").catch(() => null);
+        if (!s) return null;
+        const lim = await s.limits().catch(() => null);
+        if (!lim || !lim.images) return null;
+        return { s, maxImages: lim.images.maxCount || 1 };
+      })();
+    }
+    return samplePromise;
+  }
+  const CLAUDE_STOP = new Set(["not_granted", "sampling_disabled", "not_declared", "capability_disabled",
+    "capability_removed", "images_unavailable"]);
+  function claudeProblem(e) {
+    const code = e && e.code;
+    if (CLAUDE_STOP.has(code)) state.claudeOff = true;
+    return {
+      not_granted: "You did not allow this page to use Claude.",
+      sampling_disabled: "Claude is not available for your account here.",
+      rate_limited: "Claude is busy or you have reached your usage limit. Try again later.",
+      session_expired: "Your Claude sign-in has expired. Sign in again and reload.",
+      refused: "Claude declined to read this page.",
+      invalid_json: "Claude's answer could not be read.",
+      image_rejected: "The page picture could not be sent."
+    }[code] || "Claude could not read the page" + (e && e.message ? ": " + e.message : ".");
+  }
+
+  function blankestRow(ctx, w, h) {
+    const y0 = Math.floor(h * 0.4), y1 = Math.floor(h * 0.6);
+    const data = ctx.getImageData(0, y0, w, y1 - y0).data;
+    let best = Math.floor(h / 2), bestDark = Infinity;
+    for (let y = 0; y < y1 - y0; y++) {
+      let dark = 0;
+      for (let x = 0; x < w; x += 2) { const i = (y * w + x) * 4; if (data[i] + data[i + 1] + data[i + 2] < 450) dark++; }
+      if (dark < bestDark) { bestDark = dark; best = y0 + y; }
+    }
+    return best;
+  }
+  async function pagePictures(n, maxImages) {
+    const page = await state.doc.pdf.getPage(n);
+    const vp1 = page.getViewport({ scale: 1 });
+    const vp = page.getViewport({ scale: 1600 / vp1.width });
+    const c = document.createElement("canvas");
+    c.width = Math.ceil(vp.width); c.height = Math.ceil(vp.height);
+    const ctx = c.getContext("2d");
+    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
+    await page.render({ canvasContext: ctx, viewport: vp }).promise;
+    // Claude sees each picture at about 1.2 megapixels, so a tall page goes as a top and a bottom half
+    // (cut along an empty gap between lines) to keep small letters sharp.
+    let parts = [c];
+    if (maxImages >= 2 && c.height > c.width * 1.1) {
+      const cut = blankestRow(ctx, c.width, c.height);
+      parts = [[0, cut], [cut, c.height]].map(([a, b]) => {
+        const p = document.createElement("canvas");
+        p.width = c.width; p.height = b - a;
+        p.getContext("2d").drawImage(c, 0, a, c.width, b - a, 0, 0, c.width, b - a);
+        return p;
+      });
+    }
+    return Promise.all(parts.map((cv) => new Promise((res, rej) =>
+      cv.toBlob((b) => (b ? res(b) : rej(new Error("Could not make a picture of the page."))), "image/png"))));
+  }
+  async function claudePage(n, claude, langHint) {
+    const images = await pagePictures(n, claude.maxImages);
+    const k = images.length;
+    const prompt = [
+      "You are transcribing one page of a book so that it can be read aloud.",
+      k > 1
+        ? `The ${k} images are this one page from top to bottom, cut into ${k} parts. The parts follow on directly: do not repeat or skip any line where they meet.`
+        : "The image is the page.",
+      langHint ? `The page is probably in ${langHint}.` : "",
+      "Copy every word exactly as printed, in the original language and script. Do not translate, summarise, explain, correct or add anything. Keep the punctuation and quotation marks.",
+      "Leave out the running header at the very top of the page and the page number.",
+      'Reply with only JSON of this shape: {"blocks":[{"type":"heading","text":"..."},{"type":"prose","text":"..."},{"type":"verse","text":"line one\\nline two"}]}',
+      "- One block per heading, paragraph or stanza, in reading order.",
+      '- "prose": a paragraph of ordinary text. Join its printed lines into one line, and rejoin a word split by a hyphen at the end of a line.',
+      '- "verse": one stanza of a poem, song, hymn or verse. Keep each printed line, separated by \\n.',
+      '- "heading": a chapter or section title.',
+      'If the page has no text, reply {"blocks":[]}.'
+    ].filter(Boolean).join("\n");
+    const out = await claude.s.json(prompt, { images, modelTier: "default", cache: { gcTime: 86400000 } });
+    const blocks = (out && Array.isArray(out.blocks) ? out.blocks : [])
+      .map((b) => ({
+        type: ["verse", "heading"].includes(b && b.type) ? b.type : "prose",
+        text: String((b && b.text) || "").replace(/\r/g, "").replace(/\n\s*\n/g, "\n").trim()
+      }))
+      .map((b) => (b.type === "verse" ? b : { type: b.type, text: b.text.replace(/\s*\n\s*/g, " ") }))
+      .filter((b) => b.text);
+    return { text: blocks.map((b) => b.text).join("\n\n"), types: blocks.map((b) => b.type), src: "claude" };
+  }
+
+  async function loadPdfPage(n, prefetch) {
     const d = state.doc;
     if (!(n in d.raw)) d.raw[n] = await pdfPageText(d.pdf, n);
     const fixed = fixIndic(d.raw[n]);
     const script = detectScript(fixed);
-    const wantOcr = state.source === "ocr" ||
-      (state.source === "auto" && (!fixed.trim() || INDIC.has(script)));
-    if (!wantOcr) return { text: fixed, src: "text" };
+    const needPicture = !fixed.trim() || INDIC.has(script);
+    let claudeNote = "";
+    if (state.source === "claude" || (state.source === "auto" && needPicture)) {
+      const claude = await getClaude();
+      if (claude) {
+        // Reading ahead spends the viewer's Claude usage, so only do it while they are listening on.
+        if (prefetch && !(state.playing && state.autoNext)) return null;
+        const hint = state.langOverride !== "auto" ? baseName(state.langOverride)
+          : script && script !== "latn" ? baseName(langForScript(script, fixed)) : "";
+        try {
+          if (!prefetch) setStatus("Claude is reading page " + n, "This usually takes 10 to 40 seconds");
+          return await claudePage(n, claude, hint);
+        } catch (e) {
+          console.warn(e);
+          claudeNote = claudeProblem(e);
+        }
+      } else if (state.source === "claude") {
+        claudeNote = "Claude is only available when this page is opened on claude.ai.";
+      }
+    }
+    const withNote = (r) => (claudeNote ? Object.assign(r, { claudeFailed: claudeNote }) : r);
+    const wantOcr = state.source === "ocr" || state.source === "claude" || (state.source === "auto" && needPicture);
+    if (!wantOcr) return withNote({ text: fixed, src: "text" });
     if (!window.Tesseract) {
       if (fixed.trim()) return { text: fixed, src: "text", ocrFailed: "The text recognition tool did not load." };
       throw new Error("The text recognition tool did not load. Check your internet connection and reload the page.");
@@ -718,7 +845,7 @@ header p { margin: 0; color: var(--muted); max-width: 62ch; }
     if (!langs.includes("eng") && (INDIC.has(script) || !script)) langs.push("eng"); // English words inside Indian-language books
     state.lastOcrLangs = langs;
     try {
-      return { text: await ocrPage(n, langs), src: "ocr", langs };
+      return withNote({ text: await ocrPage(n, langs), src: "ocr", langs });
     } catch (e) {
       console.warn(e);
       const why = (e && e.message) || String(e);
@@ -727,13 +854,18 @@ header p { margin: 0; color: var(--muted); max-width: 62ch; }
     }
   }
 
-  function getPageText(n) {
+  function getPageText(n, prefetch) {
     const d = state.doc;
     if (d.kind !== "pdf") return Promise.resolve({ text: d.pages[n - 1] || "", src: "" });
     d.raw = d.raw || {};
     d.cache = d.cache || {};
     const key = [n, state.source, state.langOverride].join("|");
-    if (!d.cache[key]) d.cache[key] = loadPdfPage(n).catch((e) => { delete d.cache[key]; throw e; });
+    if (!d.cache[key]) {
+      d.cache[key] = loadPdfPage(n, prefetch).then((r) => {
+        if (!r || r.claudeFailed) delete d.cache[key]; // try again next time
+        return r;
+      }, (e) => { delete d.cache[key]; throw e; });
+    }
     return d.cache[key];
   }
 
@@ -776,8 +908,9 @@ header p { margin: 0; color: var(--muted); max-width: 62ch; }
     const lens = paras.flat().map((l) => [...l].length).sort((a, b) => a - b);
     const fullWidth = lens.length ? lens[Math.floor((lens.length - 1) * 0.9)] : 0;
     let verseParas = 0;
+    const types = state.paraTypes && state.paraTypes.length === paras.length ? state.paraTypes : null;
     paras.forEach((lines, pi) => {
-      const verse = isVerse(lines, fullWidth);
+      const verse = state.style === "auto" && types ? types[pi] === "verse" : isVerse(lines, fullWidth);
       if (verse) verseParas++;
       // A poem is read line by line; prose is read sentence by sentence.
       const units = verse ? lines : sentences(lines.join(" "), main);
@@ -832,7 +965,8 @@ header p { margin: 0; color: var(--muted); max-width: 62ch; }
     const chip = $("#langChip");
     chip.hidden = false;
     chip.textContent = baseName(state.mainLang) + (state.langOverride === "auto" ? "" : " (chosen)");
-    $("#srcNote").textContent = state.pageSrc === "ocr" ? "· read from the page picture"
+    $("#srcNote").textContent = state.pageSrc === "claude" ? "· read by Claude from the page picture"
+      : state.pageSrc === "ocr" ? "· read from the page picture by text recognition"
       : state.pageSrc === "text" ? "· text inside the file" : "";
     const others = [...new Set(state.chunks.map((c) => c.lang).filter((l) => l !== state.mainLang))];
     $("#langAlso").textContent = others.length ? "also " + others.map(baseName).join(", ") : "";
@@ -859,7 +993,7 @@ header p { margin: 0; color: var(--muted); max-width: 62ch; }
     setStatus("Loading page " + n, d.kind === "pdf" && state.source !== "text" ? "Getting the text from the page" : "");
     let res = { text: "", src: "" };
     state.waitingPage = n;
-    try { res = await getPageText(n); }
+    try { res = (await getPageText(n)) || (await getPageText(n)) || res; }
     catch (e) {
       console.error(e);
       showMsg("err", "<b>Could not read page " + n + ".</b> " + esc((e && e.message) || e), "page");
@@ -867,6 +1001,11 @@ header p { margin: 0; color: var(--muted); max-width: 62ch; }
     if (state.waitingPage === n) state.waitingPage = 0;
     if (ticket !== state.loading) return false;
     clearMsg("ocr");
+    clearMsg("claude");
+    if (res.claudeFailed) {
+      showMsg("warn", "<b>" + esc(res.claudeFailed) + "</b> The app's own text recognition was used instead, which is less accurate." +
+        (state.claudeOff ? "" : " Press Read page to ask Claude again."), "claude");
+    }
     if (res.ocrFailed) {
       showMsg("warn", "<b>Text recognition did not work, so the text stored inside the file is used.</b> " +
         "Some words may be read wrongly. Reason: " + esc(res.ocrFailed), "ocr");
@@ -874,6 +1013,8 @@ header p { margin: 0; color: var(--muted); max-width: 62ch; }
     state.pageNum = n;
     state.pageText = res.text;
     state.pageSrc = res.src;
+    state.paraTypes = res.types || null;
+    state.needsReload = !!res.claudeFailed;
     state.chunks = buildChunks(state.pageText);
     state.idx = 0;
     renderText();
@@ -882,7 +1023,7 @@ header p { margin: 0; color: var(--muted); max-width: 62ch; }
     updateUI();
     // Get the next page ready while this one is being read.
     if (d.kind === "pdf" && n < d.total && state.source !== "text") {
-      setTimeout(() => { if (state.pageNum === n) getPageText(n + 1).catch(() => {}); }, 1200);
+      setTimeout(() => { if (state.pageNum === n) getPageText(n + 1, true).catch(() => {}); }, 1200);
     }
     return true;
   }
@@ -1071,7 +1212,7 @@ header p { margin: 0; color: var(--muted); max-width: 62ch; }
     }
     // Speak something inside the click so mobile browsers unlock audio.
     stop();
-    if (n !== state.pageNum) {
+    if (n !== state.pageNum || state.needsReload) {
       try { synth.speak(new SpeechSynthesisUtterance(" ")); } catch (e) {}
       const ok = await showPage(n);
       if (!ok) return;
@@ -1115,6 +1256,7 @@ header p { margin: 0; color: var(--muted); max-width: 62ch; }
     $("#page").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); readRequested(); } });
     $("#playBtn").addEventListener("click", () => {
       if (state.playing) pause();
+      else if (!state.pageNum) readRequested();
       else speakFrom(state.idx);
     });
     $("#stopBtn").addEventListener("click", stop);
