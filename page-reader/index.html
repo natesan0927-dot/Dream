@@ -229,6 +229,22 @@ header p { margin: 0; color: var(--muted); max-width: 62ch; }
         <label class="label" for="rate">Speed</label>
         <div class="rate"><input type="range" id="rate" min="0.5" max="2" step="0.1" value="1"><span id="rateVal">1.0×</span></div>
       </div>
+      <div class="field">
+        <label class="label" for="source">Get text from</label>
+        <select id="source">
+          <option value="auto">Automatic</option>
+          <option value="ocr">Page picture (OCR)</option>
+          <option value="text">Text inside the file</option>
+        </select>
+      </div>
+      <div class="field">
+        <label class="label" for="style">Read as</label>
+        <select id="style">
+          <option value="auto">Automatic</option>
+          <option value="verse">Poem: line by line</option>
+          <option value="prose">Prose: sentences</option>
+        </select>
+      </div>
       <label class="check"><input type="checkbox" id="autoNext" checked> Keep reading next pages</label>
     </div>
   </section>
@@ -245,9 +261,10 @@ header p { margin: 0; color: var(--muted); max-width: 62ch; }
         <h2 id="pageTitle">Page 2</h2>
         <span class="chip" id="langChip">Tamil</span>
         <small id="langAlso"></small>
+        <small id="srcNote"></small>
       </div>
       <div id="text"></div>
-      <p class="hint">Tap any sentence to start reading from there. If tapping Choose file does nothing, open this page in Chrome or Safari instead of inside an app.</p>
+      <p class="hint">Tap any line or sentence to start reading from there. If tapping Choose file does nothing, open this page in Chrome or Safari instead of inside an app.</p>
     </article>
   </section>
 </div>
@@ -255,6 +272,7 @@ header p { margin: 0; color: var(--muted); max-width: 62ch; }
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
 <script>
 (() => {
   "use strict";
@@ -268,7 +286,7 @@ header p { margin: 0; color: var(--muted); max-width: 62ch; }
   // ---------- Sample document (shown until the user opens a file) ----------
   const SAMPLE = [
     "Welcome to Page Reader.\n\nOpen any PDF, Word or text file with the button above. Type the page number you want and press Read page. The app finds the language of the page by itself and reads it with a matching voice.\n\nThis sample has four pages, each in a different language. Try pages 2, 3 and 4.",
-    "வணக்கம். இது ஒரு மாதிரிப் பக்கம்.\n\nஇந்தச் செயலி, பக்கத்தில் உள்ள உரையை அதன் மூல மொழியிலேயே உரக்கப் படிக்கும். உங்கள் கோப்பைப் பதிவேற்றி, பக்க எண்ணை உள்ளிட்டு, படி என்ற பொத்தானை அழுத்துங்கள்.\n\nகற்க கசடறக் கற்பவை கற்றபின் நிற்க அதற்குத் தக.",
+    "வணக்கம். இது ஒரு மாதிரிப் பக்கம்.\n\nஇந்தச் செயலி, பக்கத்தில் உள்ள உரையை அதன் மூல மொழியிலேயே உரக்கப் படிக்கும். உங்கள் கோப்பைப் பதிவேற்றி, பக்க எண்ணை உள்ளிட்டு, படி என்ற பொத்தானை அழுத்துங்கள்.\n\nகற்க கசடறக் கற்பவை கற்றபின்\nநிற்க அதற்குத் தக.",
     "नमस्ते। यह एक नमूना पृष्ठ है।\n\nयह ऐप पृष्ठ के पाठ को उसकी मूल भाषा में ही पढ़कर सुनाता है। अपनी फ़ाइल अपलोड करें, पृष्ठ संख्या लिखें और पढ़ें बटन दबाएँ।",
     "Bonjour. Ceci est une page d'exemple.\n\nCette application lit le texte de la page à voix haute, dans la langue d'origine. Ouvrez votre fichier, saisissez le numéro de page et appuyez sur le bouton de lecture."
   ];
@@ -392,6 +410,7 @@ header p { margin: 0; color: var(--muted); max-width: 62ch; }
     doc: { name: "Sample document", kind: "text", pages: SAMPLE, total: SAMPLE.length, sample: true },
     pageNum: 0, pageText: "", chunks: [], idx: 0, playing: false, gen: 0,
     langOverride: "auto", voiceOverride: "", mainLang: "en-US", voices: [],
+    source: store.get("source", "auto"), style: store.get("style", "auto"), pageSrc: "",
     rate: store.get("rate", 1), autoNext: store.get("autoNext", true), renderTask: null, loading: 0
   };
 
@@ -491,31 +510,176 @@ header p { margin: 0; color: var(--muted); max-width: 62ch; }
   async function pdfPageText(pdf, n) {
     const page = await pdf.getPage(n);
     const tc = await page.getTextContent();
-    let out = "", lastY = null, lastEnd = null;
+    // 1. Gather the text into lines.
+    const lines = [];
+    let line = null, lastEnd = null;
     for (const it of tc.items) {
       if (typeof it.str !== "string") continue;
       const x = it.transform[4], y = it.transform[5];
-      const h = Math.abs(it.transform[3]) || it.height || 10;
-      if (lastY !== null && Math.abs(y - lastY) > h * 0.5) {
-        if (Math.abs(y - lastY) > h * 1.9) out = out.replace(/\s*$/, "\n\n");
-        else if (!out.endsWith("\n")) out += "\n";
-      } else if (lastEnd !== null && x - lastEnd > h * 0.2 && !/\s$/.test(out) && !/^\s/.test(it.str)) {
-        out += " ";
+      const fs = Math.hypot(it.transform[2], it.transform[3]) || it.height || 10;
+      if (!it.str.length) { if (it.hasEOL) lastEnd = null; continue; }
+      if (!line || Math.abs(y - line.y) > fs * 0.5) {
+        line = { y, fs, text: "" };
+        lines.push(line);
+        lastEnd = null;
+      } else if (lastEnd !== null && x - lastEnd > fs * 0.2 && !/\s$/.test(line.text) && !/^\s/.test(it.str)) {
+        line.text += " ";
       }
-      out += it.str;
-      if (it.hasEOL && !out.endsWith("\n")) out += "\n";
-      if (it.str.length || it.hasEOL) { lastY = y; lastEnd = it.hasEOL ? null : x + (it.width || 0); }
+      line.text += it.str;
+      line.fs = Math.max(line.fs, fs);
+      lastEnd = it.hasEOL ? null : x + (it.width || 0);
+    }
+    if (!lines.length) return "";
+    // 2. A gap clearly bigger than the page's usual line spacing starts a new paragraph or stanza.
+    const gaps = [];
+    for (let i = 1; i < lines.length; i++) {
+      const gap = lines[i - 1].y - lines[i].y;
+      if (gap > 0) gaps.push(gap / lines[i].fs);
+    }
+    gaps.sort((a, b) => a - b);
+    const usual = gaps.length ? gaps[Math.floor(gaps.length * 0.4)] : 1.2;
+    let out = lines[0].text.trim();
+    for (let i = 1; i < lines.length; i++) {
+      const gap = (lines[i - 1].y - lines[i].y) / lines[i].fs;
+      const newPara = gap < 0 || gap > Math.max(usual * 1.45, usual + 0.5) || Math.abs(lines[i].fs - lines[i - 1].fs) > lines[i].fs * 0.2;
+      out += (newPara ? "\n\n" : "\n") + lines[i].text.trim();
     }
     return out.replace(/([a-z])-\n([a-z])/g, "$1$2");
   }
 
-  async function getPageText(n) {
-    const d = state.doc;
-    if (d.kind === "pdf") {
-      if (!(n in d.cache)) d.cache[n] = await pdfPageText(d.pdf, n);
-      return d.cache[n];
+  // ---------- Repairing text taken out of PDFs ----------
+  // Many PDFs store Indian-language text in the order it is drawn, not the order it is written:
+  // the vowel sign that is drawn to the left of a letter (ெ ே ை in Tamil, ि in Hindi) comes first.
+  // Speech engines then spell those signs out one by one. Put them back after their letter.
+  const PREBASE = [
+    { signs: "ெேை", cons: "க-ஹ", virama: "்", nukta: "" },        // Tamil
+    { signs: "െേൈ", cons: "ക-ഺ", virama: "്", nukta: "" },        // Malayalam
+    { signs: "ि", cons: "क-हक़-य़", virama: "्", nukta: "़" }, // Devanagari
+    { signs: "িেৈ", cons: "ক-হড়-য়", virama: "্", nukta: "়" }, // Bengali
+    { signs: "િ", cons: "ક-હ", virama: "્", nukta: "઼" },              // Gujarati
+    { signs: "ਿ", cons: "ਕ-ਹਖ਼-ਫ਼", virama: "੍", nukta: "਼" }, // Gurmukhi
+    { signs: "େୈ", cons: "କ-ହଡ଼ଢ଼ୟ", virama: "୍", nukta: "଼" } // Odia
+  ].map((x) => {
+    const C = `[${x.cons}]${x.nukta ? x.nukta + "?" : ""}`;
+    return new RegExp(`(^|[^${x.cons}${x.nukta}])([${x.signs}])(${C}(?:${x.virama}${C})*)`, "gmu");
+  });
+  function fixIndic(t) {
+    if (!t) return t;
+    // A missing glyph mapping in front of a Hindi letter is almost always the short "i" sign.
+    t = t.replace(/\u0000([क-हक़-य़]़?)/g, "$1ि");
+    t = t.replace(/[\u0000-\u0008\u000B\u000E-\u001F�]/g, "");
+    for (const re of PREBASE) {
+      for (let i = 0; i < 4; i++) {
+        const next = t.replace(re, "$1$3$2");
+        if (next === t) break;
+        t = next;
+      }
     }
-    return d.pages[n - 1] || "";
+    // Vowel signs never start a word, so a space in front of one is a false break.
+    t = t.replace(/[ \t]+(?=\p{M})/gu, "");
+    // Tamil words never end in ங் or ஞ், so a space after them is a false break too.
+    t = t.replace(/([ஙஞ]்) +(?=[க-ஹ])/g, "$1");
+    return t.normalize("NFC"); // joins split signs such as ெ + ா into ொ
+  }
+
+  // ---------- Text recognition (OCR) ----------
+  const INDIC = new Set(["tamil", "deva", "beng", "guru", "gujr", "orya", "telu", "knda", "mlym", "sinh"]);
+  const TESS = { ta: "tam", hi: "hin", mr: "mar", bn: "ben", te: "tel", kn: "kan", ml: "mal", gu: "guj", pa: "pan", or: "ori",
+    ur: "urd", ne: "nep", si: "sin", en: "eng", es: "spa", fr: "fra", de: "deu", it: "ita", pt: "por", nl: "nld", sv: "swe",
+    pl: "pol", ro: "ron", tr: "tur", id: "ind", ms: "msa", vi: "vie", ru: "rus", uk: "ukr", el: "ell", ar: "ara", fa: "fas",
+    he: "heb", th: "tha", ja: "jpn", ko: "kor" };
+  const OCR_LOCAL = new Set(["eng", "tam", "hin", "mar", "mal", "tel", "kan", "ben", "guj", "pan"]); // shipped beside this page
+  const tessCode = (lang) => !lang ? null : lang === "zh-TW" ? "chi_tra" : lang.startsWith("zh") ? "chi_sim" : TESS[lang.split("-")[0]] || null;
+  const TESS_NAME = (c) => ({ chi_sim: "Chinese", chi_tra: "Chinese" }[c] || baseName(Object.keys(TESS).find((k) => TESS[k] === c) || c));
+
+  let ocrWorker = null, ocrKey = "", ocrQueue = Promise.resolve();
+  function ocrLogger(m) {
+    if (!state.waitingPage || state.playing) return;
+    const pct = Math.round((m.progress || 0) * 100);
+    if (m.status === "recognizing text") setStatus("Reading the page picture", `Page ${state.waitingPage} · ${pct}%`);
+    else if (/loading language|loading tesseract|initializ/i.test(m.status || "")) setStatus("Preparing text recognition", "First time only: downloading the language data · " + pct + "%");
+  }
+  const withTimeout = (p, ms, msg) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(msg)), ms))]);
+  async function getOcrWorker(langs) {
+    const key = langs.join("+");
+    if (ocrWorker && ocrKey === key) return ocrWorker;
+    if (ocrWorker) { try { await ocrWorker.terminate(); } catch (e) {} ocrWorker = null; }
+    const opts = {
+      workerPath: "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js",
+      corePath: "https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.1",
+      logger: ocrLogger
+    };
+    const make = (extra) => withTimeout(Tesseract.createWorker(langs, 1, Object.assign({}, opts, extra)), 120000,
+      "Text recognition took too long to start. Check your internet connection.");
+    let w = null, firstErr = null;
+    if (langs.every((l) => OCR_LOCAL.has(l)) && location.protocol !== "file:") {
+      try { w = await make({ langPath: new URL("tessdata", location.href).href }); } catch (e) { firstErr = e; }
+    }
+    if (!w) {
+      try { w = await make({}); } catch (e) { throw firstErr || e; }
+    }
+    ocrWorker = w; ocrKey = key;
+    return w;
+  }
+  function ocrPage(n, langs) {
+    const doc = state.doc;
+    const run = async () => {
+      const page = await doc.pdf.getPage(n);
+      const vp1 = page.getViewport({ scale: 1 });
+      const vp = page.getViewport({ scale: Math.min(3.5, Math.max(1.5, 2000 / vp1.width)) });
+      const c = document.createElement("canvas");
+      c.width = Math.ceil(vp.width); c.height = Math.ceil(vp.height);
+      const ctx = c.getContext("2d");
+      ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
+      await page.render({ canvasContext: ctx, viewport: vp }).promise;
+      const w = await getOcrWorker(langs);
+      const { data } = await w.recognize(c);
+      c.width = c.height = 0;
+      return (data.text || "").replace(/\u200C/g, "").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+    };
+    const p = ocrQueue.then(run, run);
+    ocrQueue = p.catch(() => {});
+    return p;
+  }
+
+  async function loadPdfPage(n) {
+    const d = state.doc;
+    if (!(n in d.raw)) d.raw[n] = await pdfPageText(d.pdf, n);
+    const fixed = fixIndic(d.raw[n]);
+    const script = detectScript(fixed);
+    const wantOcr = state.source === "ocr" ||
+      (state.source === "auto" && (!fixed.trim() || INDIC.has(script)));
+    if (!wantOcr) return { text: fixed, src: "text" };
+    if (!window.Tesseract) {
+      if (fixed.trim()) return { text: fixed, src: "text", ocrFailed: "The text recognition tool did not load." };
+      throw new Error("The text recognition tool did not load. Check your internet connection and reload the page.");
+    }
+    let langs;
+    if (state.langOverride !== "auto") langs = [tessCode(state.langOverride)];
+    else if (script) langs = [tessCode(langForScript(script, fixed))];
+    else langs = state.lastOcrLangs || ["tam", "hin", "eng"];
+    langs = langs.filter(Boolean);
+    if (!langs.length) langs = ["eng"];
+    if (!langs.includes("eng") && (INDIC.has(script) || !script)) langs.push("eng"); // English words inside Indian-language books
+    state.lastOcrLangs = langs;
+    try {
+      return { text: await ocrPage(n, langs), src: "ocr", langs };
+    } catch (e) {
+      console.warn(e);
+      const why = (e && e.message) || String(e);
+      if (fixed.trim()) return { text: fixed, src: "text", ocrFailed: why };
+      throw new Error("Could not recognise the text in the page picture. " + why);
+    }
+  }
+
+  function getPageText(n) {
+    const d = state.doc;
+    if (d.kind !== "pdf") return Promise.resolve({ text: d.pages[n - 1] || "", src: "" });
+    d.raw = d.raw || {};
+    d.cache = d.cache || {};
+    const key = [n, state.source, state.langOverride].join("|");
+    if (!d.cache[key]) d.cache[key] = loadPdfPage(n).catch((e) => { delete d.cache[key]; throw e; });
+    return d.cache[key];
   }
 
   async function renderPreview(n) {
@@ -544,7 +708,8 @@ header p { margin: 0; color: var(--muted); max-width: 62ch; }
   // ---------- Building the page ----------
   function buildChunks(text) {
     const paras = text.replace(/\r/g, "").split(/\n\s*\n/)
-      .map((p) => p.replace(/\s*\n\s*/g, " ").replace(/\s+/g, " ").trim()).filter(Boolean);
+      .map((p) => p.split("\n").map((l) => l.replace(/\s+/g, " ").trim()).filter(Boolean))
+      .filter((lines) => lines.length);
     const latinText = (text.match(/[A-Za-zÀ-ɏ']+/g) || []).join(" ");
     const latinGuess = guessLatin(latinText);
     const mainScript = detectScript(text);
@@ -553,19 +718,39 @@ header p { margin: 0; color: var(--muted); max-width: 62ch; }
     state.mainLang = main;
     state.autoMain = autoMain;
     const chunks = [];
-    paras.forEach((p, pi) => {
-      for (const s of sentences(p, main)) {
-        for (const piece of splitLong(s)) {
+    let verseParas = 0;
+    paras.forEach((lines, pi) => {
+      const verse = isVerse(lines);
+      if (verse) verseParas++;
+      // A poem is read line by line; prose is read sentence by sentence.
+      const units = verse ? lines : sentences(lines.join(" "), main);
+      units.forEach((unit, ui) => {
+        const pieces = splitLong(unit);
+        pieces.forEach((piece, k) => {
           let lang = main;
           if (state.langOverride === "auto") {
             const sc = detectScript(piece);
             if (sc && sc !== mainScript) lang = langForScript(sc, piece, latinGuess) || main;
           }
-          chunks.push({ text: piece, para: pi, lang });
-        }
-      }
+          const endOfUnit = k === pieces.length - 1;
+          const endOfPara = endOfUnit && ui === units.length - 1;
+          chunks.push({
+            text: piece, para: pi, lang,
+            br: verse && endOfUnit && !endOfPara,
+            pause: endOfPara ? (verse ? 900 : 450) : verse && endOfUnit ? 300 : 0
+          });
+        });
+      });
     });
+    state.verse = verseParas > 0;
     return chunks;
+  }
+
+  function isVerse(lines) {
+    if (state.style === "verse") return lines.length >= 1;
+    if (state.style === "prose" || lines.length < 2) return false;
+    const lens = lines.map((l) => [...l].length).sort((a, b) => a - b);
+    return lens[lens.length >> 1] <= 48; // short lines: a poem or song
   }
 
   function renderText() {
@@ -576,6 +761,7 @@ header p { margin: 0; color: var(--muted); max-width: 62ch; }
     if (!state.chunks.length) {
       $("#langChip").hidden = true;
       $("#langAlso").textContent = "";
+      $("#srcNote").textContent = "";
       const p = document.createElement("p");
       p.className = "empty";
       p.textContent = state.doc.kind === "pdf"
@@ -587,6 +773,8 @@ header p { margin: 0; color: var(--muted); max-width: 62ch; }
     const chip = $("#langChip");
     chip.hidden = false;
     chip.textContent = baseName(state.mainLang) + (state.langOverride === "auto" ? "" : " (chosen)");
+    $("#srcNote").textContent = state.pageSrc === "ocr" ? "· read from the page picture"
+      : state.pageSrc === "text" ? "· text inside the file" : "";
     const others = [...new Set(state.chunks.map((c) => c.lang).filter((l) => l !== state.mainLang))];
     $("#langAlso").textContent = others.length ? "also " + others.map(baseName).join(", ") : "";
     let p = null, last = -1;
@@ -598,7 +786,8 @@ header p { margin: 0; color: var(--muted); max-width: 62ch; }
       s.dataset.i = i;
       s.lang = c.lang;
       if (isRTL(c.lang)) s.dir = "rtl";
-      p.append(s, " ");
+      p.append(s);
+      p.append(c.br ? document.createElement("br") : " ");
     });
   }
 
@@ -608,22 +797,34 @@ header p { margin: 0; color: var(--muted); max-width: 62ch; }
     const ticket = ++state.loading;
     $("#page").value = n;
     clearMsg("page");
-    setStatus("Loading page " + n, "");
-    let text = "";
-    try { text = await getPageText(n); }
+    setStatus("Loading page " + n, d.kind === "pdf" && state.source !== "text" ? "Getting the text from the page" : "");
+    let res = { text: "", src: "" };
+    state.waitingPage = n;
+    try { res = await getPageText(n); }
     catch (e) {
       console.error(e);
       showMsg("err", "<b>Could not read page " + n + ".</b> " + esc((e && e.message) || e), "page");
     }
+    if (state.waitingPage === n) state.waitingPage = 0;
     if (ticket !== state.loading) return false;
+    clearMsg("ocr");
+    if (res.ocrFailed) {
+      showMsg("warn", "<b>Text recognition did not work, so the text stored inside the file is used.</b> " +
+        "Some words may be read wrongly. Reason: " + esc(res.ocrFailed), "ocr");
+    }
     state.pageNum = n;
-    state.pageText = text;
-    state.chunks = buildChunks(text);
+    state.pageText = res.text;
+    state.pageSrc = res.src;
+    state.chunks = buildChunks(state.pageText);
     state.idx = 0;
     renderText();
     refreshVoices();
     renderPreview(n);
     updateUI();
+    // Get the next page ready while this one is being read.
+    if (d.kind === "pdf" && n < d.total && state.source !== "text") {
+      setTimeout(() => { if (state.pageNum === n) getPageText(n + 1).catch(() => {}); }, 1200);
+    }
     return true;
   }
 
@@ -691,7 +892,12 @@ header p { margin: 0; color: var(--muted); max-width: 62ch; }
       const v = pickVoice(ch.lang);
       if (v) u.voice = v;
       u.rate = state.rate;
-      u.onend = () => { if (g !== state.gen) return; state.idx++; step(); };
+      u.onend = () => {
+        if (g !== state.gen) return;
+        state.idx++;
+        const pause = (ch.pause || 0) / state.rate;
+        if (pause) setTimeout(step, pause); else step();
+      };
       u.onerror = (e) => {
         if (g !== state.gen) return;
         if (e.error === "interrupted" || e.error === "canceled") return;
@@ -767,7 +973,7 @@ header p { margin: 0; color: var(--muted); max-width: 62ch; }
     const lang = state.chunks[state.idx] ? state.chunks[state.idx].lang : state.mainLang;
     if (!n) { setStatus("Page " + state.pageNum, "No text on this page"); return; }
     const head = word ? `${word} · page ${state.pageNum}` : `Reading page ${state.pageNum}`;
-    setStatus(head, `Sentence ${Math.min(state.idx + 1, n)} of ${n} · ${baseName(lang)}`);
+    setStatus(head, `${state.verse ? "Line" : "Sentence"} ${Math.min(state.idx + 1, n)} of ${n} · ${baseName(lang)}`);
   }
 
   function updateUI() {
@@ -814,6 +1020,8 @@ header p { margin: 0; color: var(--muted); max-width: 62ch; }
     $("#rate").value = state.rate;
     $("#rateVal").textContent = Number(state.rate).toFixed(1) + "×";
     $("#autoNext").checked = !!state.autoNext;
+    $("#source").value = state.source;
+    $("#style").value = state.style;
 
     if (!synth || !window.SpeechSynthesisUtterance) {
       showMsg("err", "<b>This browser cannot read aloud.</b> Open the app in Chrome, Edge or Safari.", "nosynth");
@@ -859,9 +1067,27 @@ header p { margin: 0; color: var(--muted); max-width: 62ch; }
     });
     $("#rate").addEventListener("change", () => { if (state.playing) speakFrom(state.idx); });
     $("#autoNext").addEventListener("change", (e) => { state.autoNext = e.target.checked; store.set("autoNext", state.autoNext); });
+    const reloadPage = async () => {
+      const was = state.playing;
+      stop();
+      if (await showPage(state.pageNum) && was) speakFrom(0);
+    };
+    $("#source").addEventListener("change", (e) => {
+      state.source = e.target.value; store.set("source", state.source);
+      if (state.doc.kind === "pdf") reloadPage();
+    });
+    $("#style").addEventListener("change", (e) => {
+      state.style = e.target.value; store.set("style", state.style);
+      const was = state.playing;
+      state.gen++; if (synth) synth.cancel();
+      state.chunks = buildChunks(state.pageText);
+      renderText();
+      if (was) speakFrom(0); else { state.playing = false; updateUI(); }
+    });
     $("#lang").addEventListener("change", (e) => {
       state.langOverride = e.target.value;
       state.voiceOverride = "";
+      if (state.doc.kind === "pdf" && state.source !== "text") { reloadPage(); return; }
       const keep = state.idx, was = state.playing;
       state.gen++; if (synth) synth.cancel();
       state.chunks = buildChunks(state.pageText);
